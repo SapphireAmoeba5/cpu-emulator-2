@@ -3,10 +3,13 @@ mod parse;
 
 use std::fmt::Display;
 
+use anyhow::anyhow;
 use spdlog::debug;
 
 use super::assembler_source::*;
 use super::tokens::*;
+
+use anyhow::{Context, Result};
 
 pub enum Instruction {
     /// 3 byte instruction
@@ -533,14 +536,18 @@ pub struct Assembler {
 }
 
 impl Assembler {
-    pub fn assemble(source: String) -> Self {
+    pub fn assemble(source: String) -> Result<Self, ()> {
         let mut assembler = Assembler {
             instructions: Vec::new(),
         };
 
-        assembler.parse_source(source);
+        let result = assembler.parse_source(source);
 
-        assembler
+        if result {
+            Ok(assembler)
+        } else {
+            Err(())
+        }
     }
 
     /// Links the generated code and returns the machine code for it
@@ -647,26 +654,46 @@ impl Assembler {
         mc
     }
 
-    fn parse_source(&mut self, source: String) {
+    fn parse_source(&mut self, source: String) -> bool {
         let source_code = SourceCode::new(source);
 
-        let mut iter = source_code.iter();
+        let mut token_iter = source_code.tokens();
+        let mut success = true;
 
-        let tokens = Tokens::tokenize(&mut iter);
-        let mut token_iter = tokens.iter();
-
-        while let Some(token) = token_iter.next() {
-            debug!("Parsing token: {token:?}");
-            match token {
-                Token::Mnemonic(instruction) => {
-                    self.parse_instruction(instruction, &mut token_iter)
+        loop {
+            let token = token_iter.next();
+            if let Ok(token) = &token {
+                match token {
+                    Some(token) => {
+                        if let Err(e) = self.parse_token(token, &mut token_iter) {
+                            println!("Error: {e}");
+                            success = false;
+                            token_iter.skip_line();
+                        }
+                    }
+                    // Stop iterating when iterator reaches None
+                    None => break,
                 }
-                other => debug!("Unknown token {other:?}"),
+            } else if let Err(e) = &token {
+                println!("Error: {e}");
+                success = false;
+                token_iter.skip_line();
             }
+        }
+
+        success
+    }
+
+    fn parse_token(&mut self, token: &Token, tokens: &mut TokenIter) -> Result<()> {
+        debug!("Parsing token: {token:?}");
+        match token {
+            Token::Mnemonic(instruction) => self.parse_instruction(instruction, tokens),
+            Token::Newline => Ok(()),
+            other => Err(anyhow!("Unknown token {other:?}")),
         }
     }
 
-    fn parse_instruction(&mut self, instruction: &Mnemonic, tokens: &mut TokenIter) {
+    fn parse_instruction(&mut self, instruction: &Mnemonic, tokens: &mut TokenIter) -> Result<()> {
         debug!("Parsing instruction: {instruction:?}");
         match instruction {
             Mnemonic::Mov => self.parse_mov(tokens),
@@ -679,15 +706,6 @@ impl Assembler {
             Mnemonic::Or => self.parse_or(tokens),
             Mnemonic::Xor => self.parse_xor(tokens),
             Mnemonic::Int => self.parse_int(tokens),
-        }
-    }
-
-    fn parse_int(&mut self, tokens: &mut TokenIter) {
-        match tokens.next() {
-            Some(Token::Number(value)) => self
-                .instructions
-                .push(Instruction::Int { code: *value as u8 }),
-            _ => panic!("Expected a number"),
         }
     }
 }

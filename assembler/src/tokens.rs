@@ -1,13 +1,10 @@
-use std::{
-    error::Error,
-    fmt::Display,
-    num::{IntErrorKind, ParseIntError},
-    ops::Index,
-};
+use anyhow::{anyhow, bail, Context, Result};
+use std::fmt::Display;
+use strum::{AsRefStr, IntoStaticStr};
 
 use super::assembler_source::Lexer;
 
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy, IntoStaticStr, AsRefStr)]
 pub enum Mnemonic {
     Mov,
     Add,
@@ -21,9 +18,9 @@ pub enum Mnemonic {
     Int,
 }
 
-#[derive(Debug, Clone, Copy)]
 /// There are 32 general purpose registers.
 /// So the max value stored inside the enum is 31
+#[derive(Debug, Clone, Copy)]
 pub enum Register {
     /// 64bit registers
     R(u8),
@@ -33,6 +30,164 @@ pub enum Register {
     S(u8),
     /// 8bit registers
     B(u8),
+}
+
+impl AsRef<str> for Register {
+    fn as_ref(&self) -> &str {
+        self.clone().into()
+    }
+}
+
+impl Into<&'static str> for Register {
+    fn into(self) -> &'static str {
+        let string = match self {
+            Self::R(num) => match num {
+                0 => "r0",
+                1 => "r1",
+                2 => "r2",
+                3 => "r3",
+                4 => "r4",
+                5 => "r5",
+                6 => "r6",
+                7 => "r7",
+                8 => "r8",
+                9 => "r9",
+                10 => "r10",
+                11 => "r11",
+                12 => "r12",
+                13 => "r13",
+                14 => "r14",
+                15 => "r15",
+                16 => "r16",
+                17 => "r17",
+                18 => "r18",
+                19 => "r19",
+                20 => "r20",
+                21 => "r21",
+                22 => "r22",
+                23 => "r23",
+                24 => "r24",
+                25 => "r25",
+                26 => "r26",
+                27 => "r27",
+                28 => "r28",
+                29 => "r29",
+                30 => "r30",
+                31 => "r31",
+                _ => unimplemented!(),
+            },
+
+            Self::W(num) => match num {
+                0 => "w0",
+                1 => "w1",
+                2 => "w2",
+                3 => "w3",
+                4 => "w4",
+                5 => "w5",
+                6 => "w6",
+                7 => "w7",
+                8 => "w8",
+                9 => "w9",
+                10 => "w10",
+                11 => "w11",
+                12 => "w12",
+                13 => "w13",
+                14 => "w14",
+                15 => "w15",
+                16 => "w16",
+                17 => "w17",
+                18 => "w18",
+                19 => "w19",
+                20 => "w20",
+                21 => "w21",
+                22 => "w22",
+                23 => "w23",
+                24 => "w24",
+                25 => "w25",
+                26 => "w26",
+                27 => "w27",
+                28 => "w28",
+                29 => "w29",
+                30 => "w30",
+                31 => "w31",
+                _ => unimplemented!(),
+            },
+
+            Self::S(num) => match num {
+                0 => "s0",
+                1 => "s1",
+                2 => "s2",
+                3 => "s3",
+                4 => "s4",
+                5 => "s5",
+                6 => "s6",
+                7 => "s7",
+                8 => "s8",
+                9 => "s9",
+                10 => "s10",
+                11 => "s11",
+                12 => "s12",
+                13 => "s13",
+                14 => "s14",
+                15 => "s15",
+                16 => "s16",
+                17 => "s17",
+                18 => "s18",
+                19 => "s19",
+                20 => "s20",
+                21 => "s21",
+                22 => "s22",
+                23 => "s23",
+                24 => "s24",
+                25 => "s25",
+                26 => "s26",
+                27 => "s27",
+                28 => "s28",
+                29 => "s29",
+                30 => "s30",
+                31 => "s31",
+                _ => unimplemented!(),
+            },
+
+            Self::B(num) => match num {
+                0 => "b0",
+                1 => "b1",
+                2 => "b2",
+                3 => "b3",
+                4 => "b4",
+                5 => "b5",
+                6 => "b6",
+                7 => "b7",
+                8 => "b8",
+                9 => "b9",
+                10 => "b10",
+                11 => "b11",
+                12 => "b12",
+                13 => "b13",
+                14 => "b14",
+                15 => "b15",
+                16 => "b16",
+                17 => "b17",
+                18 => "b18",
+                19 => "b19",
+                20 => "b20",
+                21 => "b21",
+                22 => "b22",
+                23 => "b23",
+                24 => "b24",
+                25 => "b25",
+                26 => "b26",
+                27 => "b27",
+                28 => "b28",
+                29 => "b29",
+                30 => "b30",
+                31 => "b31",
+                _ => unimplemented!(),
+            },
+        };
+
+        string
+    }
 }
 
 impl Register {
@@ -79,7 +234,31 @@ pub enum Token {
     Newline,
 }
 
+impl ToString for Token {
+    fn to_string(&self) -> String {
+        match self {
+            Self::Mnemonic(instr) => String::from(instr.as_ref()),
+            Self::Register(register) => String::from(register.as_ref()),
+            Self::Identifier(id) => id.clone(),
+            Self::Number(num) => num.to_string(),
+            Self::Comma => ",".to_string(),
+            Self::Newline => "Newline".to_string(),
+        }
+    }
+}
+
 impl Token {
+    pub fn token_type(&self) -> &'static str {
+        match self {
+            Self::Mnemonic(_) => "Mnemonic",
+            Self::Register(_) => "Register",
+            Self::Identifier(_) => "Identifier",
+            Self::Number(_) => "Number",
+            Self::Comma => ",",
+            Self::Newline => "Newline",
+        }
+    }
+
     pub fn is_comma(&self) -> bool {
         match self {
             Self::Comma => true,
@@ -93,7 +272,7 @@ impl Token {
             _ => false,
         }
     }
-    
+
     pub fn is_number(&self) -> bool {
         match self {
             Self::Number(_) => true,
@@ -103,38 +282,88 @@ impl Token {
 }
 
 #[derive(Debug)]
-pub struct Tokens {
-    tokens: Vec<Token>,
+pub struct TokenIter<'a> {
+    lexer: Lexer<'a>,
 }
 
-impl Tokens {
-    pub fn tokenize(lexer: &mut Lexer) -> Self {
-        let mut tokens = Vec::new();
-        for token in lexer {
-            if let Some(instruction) = Self::instruction(token) {
-                tokens.push(Token::Mnemonic(instruction));
-            } else if let Some(register) = Self::register(token) {
-                tokens.push(Token::Register(register));
-            } else if token == "," {
-                tokens.push(Token::Comma);
-            } else if token == "\n" {
-                tokens.push(Token::Newline)
-            } else if let Some(number) = Self::number(token) {
-                tokens.push(Token::Number(number));
-            } else {
-                tokens.push(Token::Identifier(token.to_string()));
+// impl<'a> Iterator for TokenIter<'a> {
+//     type Item = Result<Token>;
+//     fn next(&mut self) -> Option<Self::Item> {
+//         match self.tokenize() {
+//             Ok(Some(token)) => Some(Ok(token)),
+//             Ok(None) => None,
+//             Err(e) => Some(Err(e)),
+//         }
+//     }
+// }
+
+impl<'a> TokenIter<'a> {
+    pub fn new(lexer: Lexer<'a>) -> Self {
+        Self { lexer }
+    }
+
+    /// Skips all tokens until the next newline or None
+    pub fn skip_line(&mut self) {
+        // Loop until the next token is Ok(None)
+        loop {
+            if let Ok(next) = self.next() {
+                if let Some(next) = next {
+                    if next.is_newline() {
+                        break;
+                    }
+                } else {
+                    break;
+                }
             }
         }
-
-        Self { tokens }
+    }
+    /// Returns Ok(()) if the next token is a newline or None
+    pub fn newline_or_eof(&mut self) -> Result<()> {
+        self.next()?.map_or(Ok(()), |token| {
+            if token.is_newline() {
+                Ok(())
+            } else {
+                Err(anyhow!("Expected newline or end of file"))
+            }
+        })
     }
 
-    pub fn iter(&self) -> TokenIter {
-        TokenIter {
-            tokens: &self.tokens,
-            current: 0,
+    pub fn is_comma(&mut self) -> Result<()> {
+        self.next()?.map_or(Ok(()), |token| {
+            if token.is_comma() {
+                Ok(())
+            } else {
+                Err(anyhow!("Expected comma"))
+            }
+        })
+    }
+
+    pub fn next(&mut self) -> Result<Option<Token>> {
+        if let Some(token) = self.lexer.next() {
+            if let Some(instruction) = Self::instruction(token) {
+                Ok(Some(Token::Mnemonic(instruction)))
+            } else if let Some(register) = Self::register(token) {
+                Ok(Some(Token::Register(register)))
+            } else if token == "," {
+                Ok(Some(Token::Comma))
+            } else if token == "\n" {
+                Ok(Some(Token::Newline))
+            } else if let Some(number) = Self::number(token)? {
+                Ok(Some(Token::Number(number)))
+            } else {
+                Ok(Some(Token::Identifier(token.to_string())))
+            }
+        } else {
+            Ok(None)
         }
     }
+
+    // pub fn iter(&self) -> TokenIter {
+    //     TokenIter {
+    //         tokens: &self.tokens,
+    //         current: 0,
+    //     }
+    // }
 
     /// Returns Token::Instruction if the token is an instruction
     fn instruction(token: &str) -> Option<Mnemonic> {
@@ -170,6 +399,13 @@ impl Tokens {
             return None;
         }
 
+        // Prevent things like r01 from being valid registers
+        if reg_id < 10 && token.len() != 2 {
+            return None;
+        } else if reg_id >= 10 && token.len() != 3 {
+            return None;
+        }
+
         match reg_type.to_ascii_lowercase() {
             'r' => Some(Register::R(reg_id)),
             'w' => Some(Register::W(reg_id)),
@@ -180,31 +416,14 @@ impl Tokens {
     }
 
     /// Tries to parse a number
-    fn number(token: &str) -> Option<u64> {
-        token.parse::<i64>().map(|value| value as u64).ok()
-    }
-}
-
-pub struct TokenIter<'a> {
-    tokens: &'a [Token],
-    current: usize,
-}
-
-impl<'a> TokenIter<'a> {
-    /// Returns Ok(()) if the next token is a newline or None
-    pub fn newline_or_eof(&mut self) -> Result<(), ()> {
-        self.next().map_or(
-            Ok(()),
-            |token| if token.is_newline() { Ok(()) } else { Err(()) },
-        )
-    }
-}
-
-impl<'a> Iterator for TokenIter<'a> {
-    type Item = &'a Token;
-    fn next(&mut self) -> Option<Self::Item> {
-        let index = self.current;
-        self.current += 1;
-        self.tokens.get(index)
+    fn number(token: &str) -> Result<Option<u64>> {
+        if !token.starts_with(|ch: char| ch.is_ascii_digit()) {
+            Ok(None)
+        } else {
+            match token.parse::<i64>().map(|value| value as u64) {
+                Ok(num) => Ok(Some(num)),
+                Err(_) => Err(anyhow!("Invalid number {token}")),
+            }
+        }
     }
 }

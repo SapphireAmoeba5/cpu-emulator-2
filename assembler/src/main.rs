@@ -36,14 +36,19 @@ fn main() {
 
     let start = Instant::now();
 
-    let mut assembler = Assembler::assemble(text); 
-    let mc = assembler.link();
+    let assembler = Assembler::assemble(text); 
 
-    let end = Instant::now();
-    let elapsed = (end - start).as_secs_f64();
+    if let Ok(mut assembler) = assembler {
+        let mc = assembler.link();
 
-    println!("Time taken: {elapsed} seconds");
+        let end = Instant::now();
+        let elapsed = (end - start).as_secs_f64();
 
-    let mut file = OpenOptions::new().write(true).create(true).truncate(true).open(args.output).unwrap();
-    file.write_all(&mc).unwrap();
+        println!("Time taken: {elapsed} seconds");
+
+        let mut file = OpenOptions::new().write(true).create(true).truncate(true).open(args.output).unwrap();
+        file.write_all(&mc).unwrap();
+    } else {
+        println!("Assembly failed");
+    }
 }

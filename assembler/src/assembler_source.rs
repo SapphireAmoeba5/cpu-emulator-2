@@ -1,3 +1,6 @@
+use crate::tokens::TokenIter;
+
+#[derive(Debug)]
 pub struct Lexer<'a> {
     source: &'a str,
     current: usize,
@@ -89,5 +92,10 @@ impl SourceCode {
 
     pub fn iter<'a>(&'a self) -> Lexer {
         Lexer { source: &self.source, current: 0, peeked: None }
+    }
+
+    pub fn tokens<'a>(&self) -> TokenIter {
+        let lexer = self.iter();
+        TokenIter::new(lexer)
     }
 }
