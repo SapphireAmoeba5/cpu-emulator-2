@@ -4,12 +4,22 @@ use crate::tokens::TokenIter;
 pub struct Lexer<'a> {
     source: &'a str,
     current: usize,
+    line: usize,
     peeked: Option<Option<&'a str>>,
 }
 
 impl<'a> Lexer<'a> {
     pub fn new(source: &'a str) -> Self {
-        Self { source, current: 0, peeked: None }
+        Self {
+            source,
+            current: 1,
+            line: 0,
+            peeked: None,
+        }
+    }
+
+    pub fn line(&self) -> usize {
+        self.line
     }
 
     pub fn next(&mut self) -> Option<&'a str> {
@@ -28,6 +38,10 @@ impl<'a> Lexer<'a> {
                 // The current token is the seperator char so we
                 // do different logic
                 if self.current == i {
+                    // Count the number of lines
+                    if ch == '\n' {
+                        self.line += 1;
+                    }
                     final_index = i + 1;
                     break;
                 }
@@ -68,30 +82,45 @@ impl<'a> Lexer<'a> {
     }
 
     fn is_seperator_char(ch: char) -> bool {
-        ch == ',' || ch == '[' || ch == ']' || ch == '\n'
+        ch == ','
+            || ch == '['
+            || ch == ']'
+            || ch == '('
+            || ch == ')'
+            || ch == '\n'
+            || ch == '='
+            || ch == '+'
+            || ch == '-'
+            || ch == '*'
+            || ch == '/'
+            || ch == '^'
     }
 }
 
 impl<'a> Iterator for Lexer<'a> {
-    type Item = &'a str; 
+    type Item = &'a str;
     fn next(&mut self) -> Option<Self::Item> {
         self.next()
     }
 }
 
+#[derive(Debug)]
 pub struct SourceCode {
     source: String,
 }
 
 impl SourceCode {
     pub fn new(source: String) -> Self {
-        Self {
-            source,
-        }
+        Self { source }
     }
 
     pub fn iter<'a>(&'a self) -> Lexer {
-        Lexer { source: &self.source, current: 0, peeked: None }
+        Lexer {
+            source: &self.source,
+            current: 0,
+            line: 1,
+            peeked: None,
+        }
     }
 
     pub fn tokens<'a>(&self) -> TokenIter {

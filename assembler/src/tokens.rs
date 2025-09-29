@@ -1,10 +1,13 @@
 use anyhow::{anyhow, bail, Context, Result};
-use std::fmt::Display;
+use std::{
+    fmt::Display,
+    num::{IntErrorKind, ParseIntError},
+};
 use strum::{AsRefStr, IntoStaticStr};
 
 use super::assembler_source::Lexer;
 
-#[derive(Debug, Clone, Copy, IntoStaticStr, AsRefStr)]
+#[derive(Debug, Clone, Copy, Hash, Eq, PartialEq, IntoStaticStr, AsRefStr)]
 pub enum Mnemonic {
     Mov,
     Add,
@@ -224,13 +227,27 @@ impl Display for Register {
     }
 }
 
+#[derive(Debug, Clone, Copy, AsRefStr, PartialEq, Eq)]
+pub enum Keyword {
+    Const,
+}
+
 #[derive(Debug)]
 pub enum Token {
     Mnemonic(Mnemonic),
     Register(Register),
     Identifier(String),
+    Keyword(Keyword),
     Number(u64),
+    Equal,
     Comma,
+    LBrace,
+    RBrace,
+    Plus,
+    Sub,
+    Mul,
+    Div,
+    Caret,
     Newline,
 }
 
@@ -240,28 +257,42 @@ impl ToString for Token {
             Self::Mnemonic(instr) => String::from(instr.as_ref()),
             Self::Register(register) => String::from(register.as_ref()),
             Self::Identifier(id) => id.clone(),
+            Self::Keyword(keyword) => keyword.as_ref().to_string(),
             Self::Number(num) => num.to_string(),
+            Self::Equal => "=".to_string(),
             Self::Comma => ",".to_string(),
+            Self::LBrace => "(".to_string(),
+            Self::RBrace => ")".to_string(),
+            Self::Plus => "+".to_string(),
+            Self::Sub => "-".to_string(),
+            Self::Mul => "*".to_string(),
+            Self::Div => "/".to_string(),
+            Self::Caret => "^".to_string(),
             Self::Newline => "Newline".to_string(),
         }
     }
 }
 
 impl Token {
-    pub fn token_type(&self) -> &'static str {
+    pub fn to_identifier(self) -> Option<String> {
         match self {
-            Self::Mnemonic(_) => "Mnemonic",
-            Self::Register(_) => "Register",
-            Self::Identifier(_) => "Identifier",
-            Self::Number(_) => "Number",
-            Self::Comma => ",",
-            Self::Newline => "Newline",
+            Self::Identifier(id) => Some(id),
+            _ => None,
         }
     }
+}
 
+impl Token {
     pub fn is_comma(&self) -> bool {
         match self {
             Self::Comma => true,
+            _ => false,
+        }
+    }
+
+    pub fn is_equal_sign(&self) -> bool {
+        match self {
+            Self::Equal => true,
             _ => false,
         }
     }
@@ -286,17 +317,6 @@ pub struct TokenIter<'a> {
     lexer: Lexer<'a>,
 }
 
-// impl<'a> Iterator for TokenIter<'a> {
-//     type Item = Result<Token>;
-//     fn next(&mut self) -> Option<Self::Item> {
-//         match self.tokenize() {
-//             Ok(Some(token)) => Some(Ok(token)),
-//             Ok(None) => None,
-//             Err(e) => Some(Err(e)),
-//         }
-//     }
-// }
-
 impl<'a> TokenIter<'a> {
     pub fn new(lexer: Lexer<'a>) -> Self {
         Self { lexer }
@@ -304,18 +324,23 @@ impl<'a> TokenIter<'a> {
 
     /// Skips all tokens until the next newline or None
     pub fn skip_line(&mut self) {
-        // Loop until the next token is Ok(None)
-        loop {
-            if let Ok(next) = self.next() {
-                if let Some(next) = next {
-                    if next.is_newline() {
-                        break;
-                    }
-                } else {
-                    break;
-                }
+        while let Some(next) = self.lexer.next() {
+            if next == "\n" {
+                break;
             }
         }
+        // Loop until the next token is Ok(None)
+        // loop {
+        //     if let Ok(next) = self.next() {
+        //         if let Some(next) = next {
+        //             if next.is_newline() {
+        //                 break;
+        //             }
+        //         } else {
+        //             break;
+        //         }
+        //     }
+        // }
     }
     /// Returns Ok(()) if the next token is a newline or None
     pub fn newline_or_eof(&mut self) -> Result<()> {
@@ -338,32 +363,78 @@ impl<'a> TokenIter<'a> {
         })
     }
 
+    pub fn is_equal_sign(&mut self) -> Result<()> {
+        self.next()?.map_or(Ok(()), |token| {
+            if token.is_equal_sign() {
+                Ok(())
+            } else {
+                Err(anyhow!("Expected equal sign"))
+            }
+        })
+    }
+
     pub fn next(&mut self) -> Result<Option<Token>> {
         if let Some(token) = self.lexer.next() {
-            if let Some(instruction) = Self::instruction(token) {
-                Ok(Some(Token::Mnemonic(instruction)))
-            } else if let Some(register) = Self::register(token) {
-                Ok(Some(Token::Register(register)))
-            } else if token == "," {
-                Ok(Some(Token::Comma))
-            } else if token == "\n" {
-                Ok(Some(Token::Newline))
-            } else if let Some(number) = Self::number(token)? {
-                Ok(Some(Token::Number(number)))
-            } else {
-                Ok(Some(Token::Identifier(token.to_string())))
-            }
+            Self::parse_token(token)
         } else {
             Ok(None)
         }
     }
 
-    // pub fn iter(&self) -> TokenIter {
-    //     TokenIter {
-    //         tokens: &self.tokens,
-    //         current: 0,
-    //     }
-    // }
+    pub fn peek(&mut self) -> Result<Option<Token>> {
+        if let Some(token) = self.lexer.peek() {
+            Self::parse_token(token)
+        } else {
+            Ok(None)
+        }
+    }
+
+    /// Returns the line of the last token gotten from next()
+    pub fn line(&self) -> usize {
+        self.lexer.line()
+    }
+
+    fn parse_token(token: &str) -> Result<Option<Token>> {
+        let token = if let Some(instruction) = Self::instruction(token) {
+            Token::Mnemonic(instruction)
+        } else if let Some(register) = Self::register(token) {
+            Token::Register(register)
+        } else if let Some(keyword) = Self::keyword(token) {
+            Token::Keyword(keyword)
+        } else if let Some(token) = Self::special_character(token) {
+            token
+        } else if token == "\n" {
+            Token::Newline
+        } else if let Some(number) = Self::number(token)? {
+            Token::Number(number)
+        } else {
+            Token::Identifier(token.to_string())
+        };
+
+        Ok(Some(token))
+    }
+
+    fn special_character(token: &str) -> Option<Token> {
+        match token {
+            "=" => Some(Token::Equal),
+            "," => Some(Token::Comma),
+            "(" => Some(Token::LBrace),
+            ")" => Some(Token::RBrace),
+            "+" => Some(Token::Plus),
+            "-" => Some(Token::Sub),
+            "*" => Some(Token::Mul),
+            "/" => Some(Token::Div),
+            "^" => Some(Token::Caret),
+            _ => None,
+        }
+    }
+
+    fn keyword(token: &str) -> Option<Keyword> {
+        match token {
+            "const" => Some(Keyword::Const),
+            _ => None,
+        }
+    }
 
     /// Returns Token::Instruction if the token is an instruction
     fn instruction(token: &str) -> Option<Mnemonic> {
@@ -419,6 +490,18 @@ impl<'a> TokenIter<'a> {
     fn number(token: &str) -> Result<Option<u64>> {
         if !token.starts_with(|ch: char| ch.is_ascii_digit()) {
             Ok(None)
+        } else if token.starts_with("0x") && token.len() >= 3 {
+            match u64::from_str_radix(&token[2..], 16) {
+                Ok(num) => Ok(Some(num)),
+                Err(e) => match e.kind() {
+                    IntErrorKind::PosOverflow => Err(anyhow!("Number {token} is too large")),
+                    IntErrorKind::NegOverflow => Err(anyhow!("Number {token} is too small")),
+                    IntErrorKind::InvalidDigit => {
+                        Err(anyhow!("Number {token} contains an invalid digit"))
+                    }
+                    _ => Err(anyhow!("Invalid number {token}")),
+                },
+            }
         } else {
             match token.parse::<i64>().map(|value| value as u64) {
                 Ok(num) => Ok(Some(num)),
