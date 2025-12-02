@@ -1,7 +1,10 @@
-use crate::{tokens::Token, TokenIter};
-use anyhow::{anyhow, Context, Result};
+use crate::{
+    TokenIter,
+    tokens::{Register, Token},
+};
+use anyhow::{Context, Result, anyhow};
 
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy)]
 pub enum BinaryOp {
     Add,
     Sub,
@@ -16,6 +19,16 @@ impl BinaryOp {
             BinaryOp::Xor => 1,
             BinaryOp::Add | BinaryOp::Sub => 2,
             BinaryOp::Mul | BinaryOp::Div => 3,
+        }
+    }
+
+    pub fn calculate(&self, lhs: u64, rhs: u64) -> u64 {
+        match self {
+            BinaryOp::Add => lhs.wrapping_add(rhs),
+            BinaryOp::Sub => lhs.wrapping_sub(rhs),
+            BinaryOp::Mul => lhs.wrapping_mul(rhs),
+            BinaryOp::Div => (lhs as i64).wrapping_div(rhs as i64) as u64, // Do as signed division
+            BinaryOp::Xor => lhs ^ rhs,
         }
     }
 }
@@ -35,9 +48,17 @@ impl TryFrom<Token> for BinaryOp {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum UnaryOp {
     Neg,
+}
+
+impl UnaryOp {
+    pub fn calculate(&self, val: u64) -> u64 {
+        match self {
+            UnaryOp::Neg => val.wrapping_neg(),
+        }
+    }
 }
 
 impl TryFrom<Token> for UnaryOp {
@@ -51,9 +72,18 @@ impl TryFrom<Token> for UnaryOp {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy, Eq, PartialEq)]
+pub enum Mode {
+    None,
+    Immediate,
+    Addr,
+}
+
+#[derive(Debug, Clone)]
 pub enum Node {
-    Constant(u64),
+    Constant(u64, Mode),
+    Register(Register),
+    Identifier(String, Mode),
     BinaryOp {
         op: BinaryOp,
         left: Box<Self>,
@@ -65,27 +95,6 @@ pub enum Node {
     },
     Expression(Box<Self>),
 }
-pub fn calculate_tree_value(node: &Node) -> u64 {
-    match node {
-        Node::Constant(num) => *num,
-        Node::BinaryOp { op, left, right } => {
-            let left = calculate_tree_value(&left);
-            let right = calculate_tree_value(&right);
-            match op {
-                BinaryOp::Add => left.wrapping_add(right),
-                BinaryOp::Sub => left.wrapping_sub(right),
-                BinaryOp::Mul => left.wrapping_mul(right),
-                BinaryOp::Div => (left as i64).wrapping_div(right as i64) as u64,
-                BinaryOp::Xor => left ^ right,
-            }
-        }
-        Node::Expression(expr) => calculate_tree_value(expr),
-        Node::UnaryOp { op, expr } => match op {
-            UnaryOp::Neg => calculate_tree_value(expr).wrapping_neg(),
-        },
-    }
-}
-
 
 pub fn parse_expr(tokens: &mut TokenIter) -> Result<Box<Node>> {
     let mut left = parse_constant(tokens)?;
@@ -96,7 +105,8 @@ pub fn parse_expr(tokens: &mut TokenIter) -> Result<Box<Node>> {
             Err(_) => break,
         };
 
-        let token = tokens.next().unwrap().unwrap();
+        // Consume the peeked token
+        let _ = tokens.next().unwrap().unwrap();
 
         let right = parse_constant(tokens)?;
 
@@ -107,9 +117,31 @@ pub fn parse_expr(tokens: &mut TokenIter) -> Result<Box<Node>> {
 }
 
 fn parse_constant(tokens: &mut TokenIter) -> Result<Box<Node>> {
+    let mut mode = Mode::None;
+    match tokens.peek()? {
+        Some(Token::Mul) => mode = Mode::Addr,
+        Some(Token::Dollar) => mode = Mode::Immediate,
+        _ => {}
+    }
+
+    if mode != Mode::None {
+        _ = tokens.next();
+    }
+
     let node = match tokens.next()?.with_context(|| "Expected token")? {
-        Token::Number(num) => Node::Constant(num),
+        Token::Number(num) => Node::Constant(num, mode),
+        Token::Register(reg) => {
+            if mode != Mode::None {
+                return Err(anyhow!("Cannot use mode specifier with registers"));
+            }
+
+            Node::Register(reg)
+        }
+        Token::Identifier(id) => Node::Identifier(id, mode),
         Token::LBrace => {
+            if mode != Mode::None {
+                return Err(anyhow!("Cannot use mode specifier before a sub-expression"));
+            }
             // tokens.next().unwrap().unwrap();
             let expr = parse_expr(tokens)?;
             match tokens.next()? {
@@ -117,13 +149,18 @@ fn parse_constant(tokens: &mut TokenIter) -> Result<Box<Node>> {
                 _ => return Err(anyhow!("Expected closing brace")),
             }
         }
-        unary_op => match UnaryOp::try_from(unary_op) {
-            Ok(op) => Node::UnaryOp {
-                op,
-                expr: parse_constant(tokens)?,
-            },
-            _ => return Err(anyhow!("Invalid token")),
-        },
+        unary_op => {
+            if mode != Mode::None {
+                return Err(anyhow!("Cannot use mode specifier before a unary operator"));
+            }
+            match UnaryOp::try_from(unary_op) {
+                Ok(op) => Node::UnaryOp {
+                    op,
+                    expr: parse_constant(tokens)?,
+                },
+                _ => return Err(anyhow!("Invalid token while parsing expression")),
+            }
+        }
     };
     Ok(Box::new(node))
 }
@@ -148,7 +185,11 @@ fn insert_into_tree(left: &mut Box<Node>, op: BinaryOp, right: Box<Node>) {
 
     match &mut **left {
         // These expression nodes are always insertion points for any operator
-        Node::Constant(_) | Node::Expression(_) | Node::UnaryOp { .. } => {
+        Node::Constant(_, _)
+        | Node::Register(_)
+        | Node::Identifier(_, _)
+        | Node::Expression(_)
+        | Node::UnaryOp { .. } => {
             insert_as_binary_op(left, op, right);
         }
         Node::BinaryOp {

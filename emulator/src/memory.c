@@ -11,6 +11,10 @@ void memory_create(Memory* memory, size_t size) {
     memory->data = calloc(size, sizeof(AtomicU64));
 }
 
+void memory_destroy(Memory* memory) {
+    free(memory->data);
+}
+
 void memory_clear(Memory* memory, uint64_t clearValue) {
     for (int i = 0; i < memory->length; i++) {
         atomic_store_explicit(&memory->data[i], clearValue, memory_order_relaxed);
@@ -98,7 +102,7 @@ void memory_write_4(Memory* memory, uint32_t to_write, size_t address) {
     do {
         old_value = atomic_load_explicit(&memory->data[index], memory_order_relaxed);
         new_value = (old_value & ~(mask << shift)) | ((uint64_t)to_write << shift);
-    } while(!atomic_compare_exchange_weak_explicit(&memory->data[index], &old_value, new_value, memory_order_relaxed, memory_order_relaxed));
+    } while (!atomic_compare_exchange_weak_explicit(&memory->data[index], &old_value, new_value, memory_order_relaxed, memory_order_relaxed));
 }
 void memory_write_2(Memory* memory, uint16_t to_write, size_t address) {
 #ifdef MEMORY_CHECK_ALIGNMENT
@@ -116,10 +120,9 @@ void memory_write_2(Memory* memory, uint16_t to_write, size_t address) {
         const uint64_t shift = address % 8 * 8;
         old_value = atomic_load_explicit(&memory->data[index], memory_order_relaxed);
         new_value = (old_value & ~(mask << shift)) | ((uint64_t)to_write << shift);
-    } while(!atomic_compare_exchange_weak_explicit(&memory->data[index], &old_value, new_value, memory_order_relaxed, memory_order_relaxed));
+    } while (!atomic_compare_exchange_weak_explicit(&memory->data[index], &old_value, new_value, memory_order_relaxed, memory_order_relaxed));
 }
 void memory_write_1(Memory* memory, uint8_t to_write, size_t address) {
-
     size_t index = address / 8;
     uint64_t old_value;
     uint64_t new_value;
@@ -128,5 +131,5 @@ void memory_write_1(Memory* memory, uint8_t to_write, size_t address) {
         const uint64_t shift = address % 8 * 8;
         old_value = atomic_load_explicit(&memory->data[index], memory_order_relaxed);
         new_value = (old_value & ~(mask << shift)) | ((uint64_t)to_write << shift);
-    } while(!atomic_compare_exchange_weak_explicit(&memory->data[index], &old_value, new_value, memory_order_relaxed, memory_order_relaxed));
+    } while (!atomic_compare_exchange_weak_explicit(&memory->data[index], &old_value, new_value, memory_order_relaxed, memory_order_relaxed));
 }

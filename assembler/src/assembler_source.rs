@@ -82,18 +82,10 @@ impl<'a> Lexer<'a> {
     }
 
     fn is_seperator_char(ch: char) -> bool {
-        ch == ','
-            || ch == '['
-            || ch == ']'
-            || ch == '('
-            || ch == ')'
-            || ch == '\n'
-            || ch == '='
-            || ch == '+'
-            || ch == '-'
-            || ch == '*'
-            || ch == '/'
-            || ch == '^'
+        matches!(
+            ch,
+            ',' | '[' | ']' | '(' | ')' | '\n' | '=' | '+' | '-' | '*' | '/' | '^' | ':' | '$'
+        )
     }
 }
 
@@ -110,11 +102,15 @@ pub struct SourceCode {
 }
 
 impl SourceCode {
-    pub fn new(source: String) -> Self {
+    pub fn new(mut source: String) -> Self {
+        // Normalize string with a newline at the end
+        if !source.ends_with('\n') {
+            source.push('\n');
+        }
         Self { source }
     }
 
-    pub fn iter<'a>(&'a self) -> Lexer {
+    pub fn iter<'a>(&'a self) -> Lexer<'a> {
         Lexer {
             source: &self.source,
             current: 0,

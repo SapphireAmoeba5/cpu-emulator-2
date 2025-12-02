@@ -12,6 +12,8 @@ typedef struct Memory {
 
 // Size is in units of 8 bytes
 void memory_create(Memory* memory, size_t size);
+void memory_destroy(Memory* memory);
+
 void memory_clear(Memory* memory, uint64_t clearValue);
 
 size_t memory_size_bytes(Memory* mem);

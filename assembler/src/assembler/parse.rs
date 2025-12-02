@@ -1,7 +1,6 @@
 use crate::{
-    assembler::{Assembler},
+    assembler::Assembler,
     tokens::{Register, Token, TokenIter},
 };
 use anyhow::{anyhow, bail, Context, Result};
 use spdlog::prelude::*;
-

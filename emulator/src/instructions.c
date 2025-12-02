@@ -2,6 +2,7 @@
 #include "cpu.h"
 #include "memory.h"
 
+#include <assert.h>
 #include <inttypes.h>
 #include <stdint.h>
 #include <stdio.h>
@@ -134,7 +135,7 @@ void intpt(Cpu* cpu, uint8_t instruction[16]) {
 
     uint8_t index = instruction[1];
 
-    if (index == 80) {
+    if (index == 0x80) {
         printf("Cycle: %lu\n", cpu->clock_count);
         for (int i = 0; i < 32; i++) {
             uint64_t value = cpu->registers[i].r;
@@ -147,632 +148,179 @@ void intpt(Cpu* cpu, uint8_t instruction[16]) {
     }
 }
 
-void mov_reg_reg(Cpu* cpu, uint8_t instruction[16]) {
-    cpu->ip += 3;
-
-    destbyte dest_byte = get_dest_byte(instruction[1]);
-
-    srcbyte src_byte = get_src_byte(instruction[2]);
-
-    reg* dest = &cpu->registers[dest_byte.reg_index];
-    reg* src = &cpu->registers[src_byte.reg_index];
-
-    switch (dest_byte.size) {
-    case 0:
-        dest->b = src->b;
-        break;
-    case 1:
-        dest->s = src->s;
-        break;
-    case 2:
-        dest->w = src->w;
-        break;
-    case 3:
-        dest->r = src->r;
-    }
-
-    // printf("mov r%d, r%d\n", (uint32_t)dest_byte.reg_index, (uint32_t)src_byte.reg_index);
+void parse_reg_transfer_byte(uint8_t byte, uint8_t* dest, uint8_t* src) {
+    *dest = (byte >> 4) & 0x0f;
+    *src = byte & 0x0f;
 }
 
-void mov_reg_imm8(Cpu* cpu, uint8_t instruction[16]) {
-    cpu->ip += 3;
-    destbyte dest_byte = get_dest_byte(instruction[1]);
+typedef enum {
+    PCRel = 0,
+    SPRel = 1,
+    // Base + Index * Scale
+    BIS = 2,
+    Imm = 3,
 
-    uint8_t value = instruction[2];
+} addr_mode;
 
-    cpu->registers[dest_byte.reg_index].b = value;
-
-    // printf("mov b%d, %d\n", (uint32_t)dest_byte.reg_index, (uint32_t)value);
+/// `dest`, `addr_mode`, and `size` must not be NULL and be valid pointers
+/// `size` will be assigned 0, 1, 2, or 3 which encodes the byte width as a power of two
+static inline void parse_transfer_byte(uint8_t byte, uint8_t* dest, addr_mode* addr_mode, uint8_t* size) {
+    *dest = (byte >> 4) & 0x0f;
+    *addr_mode = (byte >> 2) & 0b11;
+    *size = byte & 0b11;
 }
-void mov_reg_imm16(Cpu* cpu, uint8_t instruction[16]) {
+
+// TODO: Make the passed in `instruction` start at the beginning of where the function should start computing
+static inline uint64_t get_pc_rel_addr(Cpu* cpu, uint8_t instruction[16]) {
     cpu->ip += 4;
+    int32_t off = 0;
+    memcpy(&off, &instruction[2], sizeof(off));
+    uint64_t address = (uint64_t)((int64_t)cpu->ip + (int64_t)off);
 
-    destbyte dest_byte = get_dest_byte(instruction[1]);
-
-    uint16_t value;
-    memcpy(&value, &instruction[2], sizeof(uint16_t));
-
-    cpu->registers[dest_byte.reg_index].s = value;
-
-    // printf("mov s%d, %d\n", (uint32_t)dest_byte.reg_index, (uint32_t)value);
-}
-void mov_reg_imm32(Cpu* cpu, uint8_t instruction[16]) {
-    cpu->ip += 6;
-
-    destbyte dest_byte = get_dest_byte(instruction[1]);
-
-    uint32_t value;
-    memcpy(&value, &instruction[2], sizeof(uint32_t));
-
-    cpu->registers[dest_byte.reg_index].w = value;
-
-    // printf("mov w%d, %d\n", (uint32_t)dest_byte.reg_index, (uint32_t)value);
-}
-void mov_reg_imm64(Cpu* cpu, uint8_t instruction[16]) {
-    cpu->ip += 10;
-
-    destbyte dest_byte = get_dest_byte(instruction[1]);
-
-    uint64_t value;
-    memcpy(&value, &instruction[2], sizeof(uint64_t));
-
-    cpu->registers[dest_byte.reg_index].r = value;
-
-    // printf("mov r%d, %" PRIu64 "\n", (uint32_t)dest_byte.reg_index, value);
+    return address;
 }
 
-void add_reg_reg(Cpu* cpu, uint8_t instruction[16]) {
-    cpu->ip += 3;
+static inline bool load_pc_rel(Cpu* cpu, uint8_t instruction[16], uint8_t size, uint64_t* value) {
+    uint64_t address = get_pc_rel_addr(cpu, instruction);
 
-    destbyte dest_byte = get_dest_byte(instruction[1]);
-    srcbyte src_byte = get_src_byte(instruction[2]);
-
-    reg* dest = &cpu->registers[dest_byte.reg_index];
-    reg* src = &cpu->registers[src_byte.reg_index];
-
-    switch (dest_byte.size) {
+    switch (size) {
     case 0:
-        dest->b += src->b;
-        break;
-    case 1:
-        dest->s += src->s;
-        break;
-    case 2:
-        dest->w += src->w;
-        break;
-    case 3:
-        dest->r += src->r;
-    }
-}
-void add_reg_imm8(Cpu* cpu, uint8_t instruction[16]) {
-    cpu->ip += 3;
-    destbyte dest_byte = get_dest_byte(instruction[1]);
-
-    uint8_t value = instruction[2];
-
-    cpu->registers[dest_byte.reg_index].b += value;
-}
-void add_reg_imm16(Cpu* cpu, uint8_t instruction[16]) {
-    cpu->ip += 4;
-
-    destbyte dest_byte = get_dest_byte(instruction[1]);
-
-    uint16_t value;
-    memcpy(&value, &instruction[2], sizeof(uint16_t));
-
-    cpu->registers[dest_byte.reg_index].s += value;
-}
-void add_reg_imm32(Cpu* cpu, uint8_t instruction[16]) {
-    cpu->ip += 6;
-
-    destbyte dest_byte = get_dest_byte(instruction[1]);
-
-    uint32_t value;
-    memcpy(&value, &instruction[2], sizeof(uint32_t));
-
-    cpu->registers[dest_byte.reg_index].w += value;
-}
-void add_reg_imm64(Cpu* cpu, uint8_t instruction[16]) {
-    cpu->ip += 10;
-
-    destbyte dest_byte = get_dest_byte(instruction[1]);
-
-    uint64_t value;
-    memcpy(&value, &instruction[2], sizeof(uint64_t));
-
-    cpu->registers[dest_byte.reg_index].r += value;
-}
-
-void sub_reg_reg(Cpu* cpu, uint8_t instruction[16]) {
-    cpu->ip += 3;
-
-    destbyte dest_byte = get_dest_byte(instruction[1]);
-    srcbyte src_byte = get_src_byte(instruction[2]);
-
-    reg* dest = &cpu->registers[dest_byte.reg_index];
-    reg* src = &cpu->registers[src_byte.reg_index];
-
-    switch (dest_byte.size) {
-    case 0:
-        dest->b -= src->b;
-        break;
-    case 1:
-        dest->s -= src->s;
-        break;
-    case 2:
-        dest->w -= src->w;
-        break;
-    case 3:
-        dest->r -= src->r;
-    }
-}
-void sub_reg_imm8(Cpu* cpu, uint8_t instruction[16]) {
-    cpu->ip += 3;
-    destbyte dest_byte = get_dest_byte(instruction[1]);
-
-    uint8_t value = instruction[2];
-
-    cpu->registers[dest_byte.reg_index].b -= value;
-}
-void sub_reg_imm16(Cpu* cpu, uint8_t instruction[16]) {
-    cpu->ip += 4;
-
-    destbyte dest_byte = get_dest_byte(instruction[1]);
-
-    uint16_t value;
-    memcpy(&value, &instruction[2], sizeof(uint16_t));
-
-    cpu->registers[dest_byte.reg_index].s -= value;
-}
-void sub_reg_imm32(Cpu* cpu, uint8_t instruction[16]) {
-    cpu->ip += 6;
-
-    destbyte dest_byte = get_dest_byte(instruction[1]);
-
-    uint32_t value;
-    memcpy(&value, &instruction[2], sizeof(uint32_t));
-
-    cpu->registers[dest_byte.reg_index].w -= value;
-}
-void sub_reg_imm64(Cpu* cpu, uint8_t instruction[16]) {
-    cpu->ip += 10;
-
-    destbyte dest_byte = get_dest_byte(instruction[1]);
-
-    uint64_t value;
-    memcpy(&value, &instruction[2], sizeof(uint64_t));
-
-    cpu->registers[dest_byte.reg_index].r -= value;
-}
-
-void mul_reg_reg(Cpu* cpu, uint8_t instruction[16]) {
-    cpu->ip += 3;
-
-    destbyte dest_byte = get_dest_byte(instruction[1]);
-    srcbyte src_byte = get_src_byte(instruction[2]);
-
-    reg* dest = &cpu->registers[dest_byte.reg_index];
-    reg* src = &cpu->registers[src_byte.reg_index];
-
-    switch (dest_byte.size) {
-    case 0:
-        dest->b *= src->b;
-        break;
-    case 1:
-        dest->s *= src->s;
-        break;
-    case 2:
-        dest->w *= src->w;
-        break;
-    case 3:
-        dest->r *= src->r;
-    }
-}
-void mul_reg_imm8(Cpu* cpu, uint8_t instruction[16]) {
-    cpu->ip += 3;
-    destbyte dest_byte = get_dest_byte(instruction[1]);
-
-    uint8_t value = instruction[2];
-
-    cpu->registers[dest_byte.reg_index].b *= value;
-}
-void mul_reg_imm16(Cpu* cpu, uint8_t instruction[16]) {
-    cpu->ip += 4;
-
-    destbyte dest_byte = get_dest_byte(instruction[1]);
-
-    uint16_t value;
-    memcpy(&value, &instruction[2], sizeof(uint16_t));
-
-    cpu->registers[dest_byte.reg_index].s *= value;
-}
-void mul_reg_imm32(Cpu* cpu, uint8_t instruction[16]) {
-    cpu->ip += 6;
-
-    destbyte dest_byte = get_dest_byte(instruction[1]);
-
-    uint32_t value;
-    memcpy(&value, &instruction[2], sizeof(uint32_t));
-
-    cpu->registers[dest_byte.reg_index].w *= value;
-}
-void mul_reg_imm64(Cpu* cpu, uint8_t instruction[16]) {
-    cpu->ip += 10;
-
-    destbyte dest_byte = get_dest_byte(instruction[1]);
-
-    uint64_t value;
-    memcpy(&value, &instruction[2], sizeof(uint64_t));
-
-    cpu->registers[dest_byte.reg_index].r *= value;
-}
-
-void div_reg_reg(Cpu* cpu, uint8_t instruction[16]) {
-    cpu->ip += 3;
-
-    destbyte dest_byte = get_dest_byte(instruction[1]);
-    srcbyte src_byte = get_src_byte(instruction[2]);
-
-    reg* dest = &cpu->registers[dest_byte.reg_index];
-    reg* src = &cpu->registers[src_byte.reg_index];
-
-    switch (dest_byte.size) {
-    case 0:
-        if (checked_div(&dest->b, dest->b, src->b)) {
-            printf("Invalid division\n");
-            exit(1);
+        // Only works on little endian
+        if (!cpu_read_1(cpu, address, (uint8_t*)value)) {
+            return false;
         }
         break;
     case 1:
-        if (checked_div(&dest->s, dest->s, src->s)) {
-            printf("Invalid division\n");
-            exit(1);
+        // Only works on little endian
+        if (!cpu_read_2(cpu, address, (uint16_t*)value)) {
+            return false;
         }
         break;
     case 2:
-        if (checked_div(&dest->w, dest->w, src->w)) {
-            printf("Invalid division\n");
-            exit(1);
+        // Only works on little endian
+        if (!cpu_read_4(cpu, address, (uint32_t*)value)) {
+            return false;
         }
         break;
     case 3:
-        if (checked_div(&dest->r, dest->r, src->r)) {
-            printf("Invalid division\n");
-            exit(1);
+        // Only works on little endian
+        if (!cpu_read_8(cpu, address, value)) {
+            return false;
         }
         break;
+    default:
+        __builtin_unreachable();
     }
-}
-void div_reg_imm8(Cpu* cpu, uint8_t instruction[16]) {
-    cpu->ip += 3;
-    destbyte dest_byte = get_dest_byte(instruction[1]);
 
-    uint8_t value = instruction[2];
-
-    reg* dest = &cpu->registers[dest_byte.reg_index];
-    if (checked_div(&dest->b, dest->b, value)) {
-        printf("Invalid division\n");
-        exit(1);
-    }
-}
-void div_reg_imm16(Cpu* cpu, uint8_t instruction[16]) {
-    cpu->ip += 4;
-
-    destbyte dest_byte = get_dest_byte(instruction[1]);
-
-    uint16_t value;
-    memcpy(&value, &instruction[2], sizeof(uint16_t));
-
-    reg* dest = &cpu->registers[dest_byte.reg_index];
-    if (checked_div(&dest->s, dest->s, value)) {
-        printf("Invalid division\n");
-        exit(1);
-    }
-}
-void div_reg_imm32(Cpu* cpu, uint8_t instruction[16]) {
-    cpu->ip += 6;
-
-    destbyte dest_byte = get_dest_byte(instruction[1]);
-
-    uint32_t value;
-    memcpy(&value, &instruction[2], sizeof(uint32_t));
-
-    reg* dest = &cpu->registers[dest_byte.reg_index];
-    if (checked_div(&dest->w, dest->w, value)) {
-        printf("Invalid division\n");
-        exit(1);
-    }
-}
-void div_reg_imm64(Cpu* cpu, uint8_t instruction[16]) {
-    cpu->ip += 10;
-
-    destbyte dest_byte = get_dest_byte(instruction[1]);
-
-    uint64_t value;
-    memcpy(&value, &instruction[2], sizeof(uint64_t));
-
-    reg* dest = &cpu->registers[dest_byte.reg_index];
-    if (checked_div(&dest->r, dest->r, value)) {
-        printf("Invalid division %lu\n", value);
-        exit(1);
-    }
+    return true;
 }
 
-void idiv_reg_reg(Cpu* cpu, uint8_t instruction[16]) {
-    cpu->ip += 3;
+static inline uint64_t get_sp_rel_addr(Cpu* cpu, uint8_t instruction[16]) {
+    cpu->ip += 1;
 
-    destbyte dest_byte = get_dest_byte(instruction[1]);
-    srcbyte src_byte = get_src_byte(instruction[2]);
+    
+}
 
-    reg* dest = &cpu->registers[dest_byte.reg_index];
-    reg* src = &cpu->registers[src_byte.reg_index];
+void mov_reg(Cpu* cpu, uint8_t instruction[16]) {
+    cpu->ip += 2;
+    uint8_t transfer_byte = instruction[1];
 
-    switch (dest_byte.size) {
-    case 0:
-        if(checked_div_i8((int8_t*)&dest->b, (int8_t)dest->b, (int8_t)src->b)) {
-            printf("Invalid division\n");
-            exit(1);
+    uint8_t dest;
+    uint8_t src;
+    parse_reg_transfer_byte(transfer_byte, &dest, &src);
+
+    cpu->registers[dest] = cpu->registers[src];
+}
+
+void mov_imm_or_mem(Cpu* cpu, uint8_t instruction[16]) {
+    // Opcode and the transfer byte
+    cpu->ip += 2;
+
+    uint8_t dest;
+    addr_mode addr_mode;
+    uint8_t size;
+
+    uint64_t value = 0;
+    parse_transfer_byte(instruction[1], &dest, &addr_mode, &size);
+
+    switch (addr_mode) {
+    case PCRel:
+        if (!load_pc_rel(cpu, instruction, size, &value)) {
+            return;
         }
+        break;
+    case BIS: {
+        assert(1 == 0);
+        break;
+    }
+
+    case SPRel: {
+        assert(1 == 0);
+        break;
+    }
+
+    case Imm: {
+        cpu->ip += 1 << size;
+        // Only works on little endian systems
+        memcpy(&value, &instruction[2], 1 << size);
+        break;
+    }
+    }
+
+    switch (size) {
+    case 0:
+        cpu->registers[dest].b = value;
+    case 1:
+        cpu->registers[dest].s = value;
+    case 2:
+        cpu->registers[dest].w = value;
+    case 3:
+        cpu->registers[dest].r = value;
+    }
+}
+
+void str(Cpu* cpu, uint8_t instruction[16]) {
+    cpu->ip += 2;
+
+    uint8_t dest;
+    addr_mode addr_mode;
+    uint8_t size;
+
+    parse_transfer_byte(instruction[1], &dest, &addr_mode, &size);
+
+    uint64_t address;
+    switch (addr_mode) {
+    case PCRel:
+        address = get_pc_rel_addr(cpu, instruction);
+        break;
+    case BIS:
+        assert(1 == 0);
+        break;
+    case SPRel:
+        assert(1 == 0);
+        break;
+    case Imm:
+        // The immediate value for the str instruction is always 8 bytes
+        cpu->ip += 8;
+
+        memcpy(&address, &instruction[2], sizeof(address));
+        break;
+    }
+
+    switch (size) {
+    case 0:
+        cpu_write_1(cpu, cpu->registers[dest].b, address);
         break;
     case 1:
-        if(checked_div_i16((int16_t*)&dest->s, (int16_t)dest->s, (int16_t)src->s)) {
-            printf("Invalid division\n");
-            exit(1);
-        }
+        cpu_write_2(cpu, cpu->registers[dest].s, address);
         break;
     case 2:
-        if(checked_div_i32((int32_t*)&dest->w, (int32_t)dest->w, (int32_t)src->w)) {
-            printf("Invalid division\n");
-            exit(1);
-        }
+        cpu_write_4(cpu, cpu->registers[dest].w, address);
         break;
     case 3:
-        if(checked_div_i64((int64_t*)&dest->r, (int64_t)dest->r, (int64_t)src->r)) {
-            printf("Invalid division\n");
-            exit(1);
-        }
+        cpu_write_8(cpu, cpu->registers[dest].r, address);
+        break;
+    default:
+        __builtin_unreachable();
     }
-}
-void idiv_reg_imm8(Cpu* cpu, uint8_t instruction[16]) {
-    cpu->ip += 3;
-    destbyte dest_byte = get_dest_byte(instruction[1]);
-
-    uint8_t value = instruction[2];
-
-    if (value == 0) {
-        printf("Zero dividend\n");
-        exit(1);
-    }
-    cpu->registers[dest_byte.reg_index].b /= value;
-}
-void idiv_reg_imm16(Cpu* cpu, uint8_t instruction[16]) {
-    cpu->ip += 4;
-
-    destbyte dest_byte = get_dest_byte(instruction[1]);
-
-    uint16_t value;
-    memcpy(&value, &instruction[2], sizeof(uint16_t));
-
-    if (value == 0) {
-        printf("Zero dividend\n");
-        exit(1);
-    }
-    cpu->registers[dest_byte.reg_index].s /= value;
-}
-void idiv_reg_imm32(Cpu* cpu, uint8_t instruction[16]) {
-    cpu->ip += 6;
-
-    destbyte dest_byte = get_dest_byte(instruction[1]);
-
-    uint32_t value;
-    memcpy(&value, &instruction[2], sizeof(uint32_t));
-
-    if (value == 0) {
-        printf("Zero dividend\n");
-        exit(1);
-    }
-    cpu->registers[dest_byte.reg_index].w /= value;
-}
-void idiv_reg_imm64(Cpu* cpu, uint8_t instruction[16]) {
-    cpu->ip += 10;
-
-    destbyte dest_byte = get_dest_byte(instruction[1]);
-
-    uint64_t value;
-    memcpy(&value, &instruction[2], sizeof(uint64_t));
-
-    if (value == 0) {
-        printf("Zero dividend\n");
-        exit(1);
-    }
-
-    cpu->registers[dest_byte.reg_index].r = (int64_t)cpu->registers[dest_byte.reg_index].r / (int64_t)value;
-}
-
-void and_reg_reg(Cpu* cpu, uint8_t instruction[16]) {
-    cpu->ip += 3;
-
-    destbyte dest_byte = get_dest_byte(instruction[1]);
-    srcbyte src_byte = get_src_byte(instruction[2]);
-
-    reg* dest = &cpu->registers[dest_byte.reg_index];
-    reg* src = &cpu->registers[src_byte.reg_index];
-
-    switch (dest_byte.size) {
-    case 0:
-        dest->b &= src->b;
-        break;
-    case 1:
-        dest->s &= src->s;
-        break;
-    case 2:
-        dest->w &= src->w;
-        break;
-    case 3:
-        dest->r &= src->r;
-    }
-}
-void and_reg_imm8(Cpu* cpu, uint8_t instruction[16]) {
-    cpu->ip += 3;
-    destbyte dest_byte = get_dest_byte(instruction[1]);
-
-    uint8_t value = instruction[2];
-
-    cpu->registers[dest_byte.reg_index].b &= value;
-}
-void and_reg_imm16(Cpu* cpu, uint8_t instruction[16]) {
-    cpu->ip += 4;
-
-    destbyte dest_byte = get_dest_byte(instruction[1]);
-
-    uint16_t value;
-    memcpy(&value, &instruction[2], sizeof(uint16_t));
-
-    cpu->registers[dest_byte.reg_index].s &= value;
-}
-void and_reg_imm32(Cpu* cpu, uint8_t instruction[16]) {
-    cpu->ip += 6;
-
-    destbyte dest_byte = get_dest_byte(instruction[1]);
-
-    uint32_t value;
-    memcpy(&value, &instruction[2], sizeof(uint32_t));
-
-    cpu->registers[dest_byte.reg_index].w &= value;
-}
-void and_reg_imm64(Cpu* cpu, uint8_t instruction[16]) {
-    cpu->ip += 10;
-
-    destbyte dest_byte = get_dest_byte(instruction[1]);
-
-    uint64_t value;
-    memcpy(&value, &instruction[2], sizeof(uint64_t));
-
-    cpu->registers[dest_byte.reg_index].r &= value;
-}
-
-void or_reg_reg(Cpu* cpu, uint8_t instruction[16]) {
-    cpu->ip += 3;
-
-    destbyte dest_byte = get_dest_byte(instruction[1]);
-    srcbyte src_byte = get_src_byte(instruction[2]);
-
-    reg* dest = &cpu->registers[dest_byte.reg_index];
-    reg* src = &cpu->registers[src_byte.reg_index];
-
-    switch (dest_byte.size) {
-    case 0:
-        dest->b |= src->b;
-        break;
-    case 1:
-        dest->s |= src->s;
-        break;
-    case 2:
-        dest->w |= src->w;
-        break;
-    case 3:
-        dest->r |= src->r;
-    }
-}
-
-void or_reg_imm8(Cpu* cpu, uint8_t instruction[16]) {
-    cpu->ip += 3;
-    destbyte dest_byte = get_dest_byte(instruction[1]);
-
-    uint8_t value = instruction[2];
-
-    cpu->registers[dest_byte.reg_index].b |= value;
-}
-void or_reg_imm16(Cpu* cpu, uint8_t instruction[16]) {
-    cpu->ip += 4;
-
-    destbyte dest_byte = get_dest_byte(instruction[1]);
-
-    uint16_t value;
-    memcpy(&value, &instruction[2], sizeof(uint16_t));
-
-    cpu->registers[dest_byte.reg_index].s |= value;
-}
-void or_reg_imm32(Cpu* cpu, uint8_t instruction[16]) {
-    cpu->ip += 6;
-
-    destbyte dest_byte = get_dest_byte(instruction[1]);
-
-    uint32_t value;
-    memcpy(&value, &instruction[2], sizeof(uint32_t));
-
-    cpu->registers[dest_byte.reg_index].w |= value;
-}
-void or_reg_imm64(Cpu* cpu, uint8_t instruction[16]) {
-    cpu->ip += 10;
-
-    destbyte dest_byte = get_dest_byte(instruction[1]);
-
-    uint64_t value;
-    memcpy(&value, &instruction[2], sizeof(uint64_t));
-
-    cpu->registers[dest_byte.reg_index].r |= value;
-}
-
-void xor_reg_reg(Cpu* cpu, uint8_t instruction[16]) {
-    cpu->ip += 3;
-
-    destbyte dest_byte = get_dest_byte(instruction[1]);
-    srcbyte src_byte = get_src_byte(instruction[2]);
-
-    reg* dest = &cpu->registers[dest_byte.reg_index];
-    reg* src = &cpu->registers[src_byte.reg_index];
-
-    switch (dest_byte.size) {
-    case 0:
-        dest->b ^= src->b;
-        break;
-    case 1:
-        dest->s ^= src->s;
-        break;
-    case 2:
-        dest->w ^= src->w;
-        break;
-    case 3:
-        dest->r ^= src->r;
-    }
-}
-
-void xor_reg_imm8(Cpu* cpu, uint8_t instruction[16]) {
-    cpu->ip += 3;
-    destbyte dest_byte = get_dest_byte(instruction[1]);
-
-    uint8_t value = instruction[2];
-
-    cpu->registers[dest_byte.reg_index].b ^= value;
-}
-void xor_reg_imm16(Cpu* cpu, uint8_t instruction[16]) {
-    cpu->ip += 4;
-
-    destbyte dest_byte = get_dest_byte(instruction[1]);
-
-    uint16_t value;
-    memcpy(&value, &instruction[2], sizeof(uint16_t));
-
-    cpu->registers[dest_byte.reg_index].s ^= value;
-}
-void xor_reg_imm32(Cpu* cpu, uint8_t instruction[16]) {
-    cpu->ip += 6;
-
-    destbyte dest_byte = get_dest_byte(instruction[1]);
-
-    uint32_t value;
-    memcpy(&value, &instruction[2], sizeof(uint32_t));
-
-    cpu->registers[dest_byte.reg_index].w ^= value;
-}
-void xor_reg_imm64(Cpu* cpu, uint8_t instruction[16]) {
-    cpu->ip += 10;
-
-    destbyte dest_byte = get_dest_byte(instruction[1]);
-
-    uint64_t value;
-    memcpy(&value, &instruction[2], sizeof(uint64_t));
-
-    cpu->registers[dest_byte.reg_index].r ^= value;
 }

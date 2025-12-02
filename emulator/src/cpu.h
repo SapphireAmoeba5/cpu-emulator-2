@@ -34,6 +34,20 @@ typedef struct Cpu {
     uint64_t instruction_buffer[BUF_SIZE];
 } Cpu;
 
-void cpu_create(Cpu* cpu, Memory* memory);
-void cpu_run(Cpu* cpu);
+bool cpu_write_8(Cpu* cpu, uint64_t data, size_t address);
+bool cpu_write_4(Cpu* cpu, uint32_t data, size_t address);
+bool cpu_write_2(Cpu* cpu, uint16_t data, size_t address);
+bool cpu_write_1(Cpu* cpu, uint8_t data, size_t address);
 
+/// `value` must not be NULL
+bool cpu_read_8(Cpu* cpu, size_t address, uint64_t* value);
+/// `value` must not be NULL
+bool cpu_read_4(Cpu* cpu, size_t address,  uint32_t* value);
+/// `value` must not be NULL
+bool cpu_read_2(Cpu* cpu, size_t address,  uint16_t* value);
+/// `value` must not be NULL
+bool cpu_read_1(Cpu* cpu, size_t address,  uint8_t* value);
+
+void cpu_create(Cpu* cpu, Memory* memory);
+void cpu_destroy(Cpu* cpu);
+void cpu_run(Cpu* cpu);

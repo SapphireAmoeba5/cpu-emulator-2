@@ -1,3 +1,7 @@
+#include <asm-generic/errno-base.h>
+#include <asm-generic/errno.h>
+#include <errno.h>
+#include <stdatomic.h>
 #include <stdckdint.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -7,27 +11,60 @@
 #include "cpu.h"
 #include "memory.h"
 
+/// Reads the file at PATH, and returns an allocated bufer and writes the length of the buffer to the pointer referenced by `length`
+///
+/// The returned buffer is owned by the caller
+///
+/// # Errors
+/// Returns NULL if reading failed and `length` will contain an unspecified value
+void* readFile(const char* path, uint64_t* length) {
+    FILE* file = fopen(path, "r");
+    
+    if (file == NULL) {
+        return NULL;
+    }
+
+    fseek(file, 0, SEEK_END);
+    long size = ftell(file);
+    rewind(file);
+
+    *length = size;
+    void* buf = malloc(size);
+
+    unsigned long n = 0;
+
+    while(n != size) {
+        if(ferror(file) != 0 && errno != EINTR) {
+            fclose(file);
+            free(buf);
+            return NULL;
+        }
+        else if(feof(file) != 0) {
+            break;
+        }
+
+        n = fread(buf, size, 1, file);
+    }
+
+    fclose(file);
+    return buf;
+}
+
 int main(void) { 
     Memory* memory = malloc(sizeof(Memory));
     memory_create(memory, 1024 * 1024 * 100 / 8);
 
-    FILE* file = fopen("output.bin", "r");
-    fseek(file, 0, SEEK_END);
-    size_t size = ftell(file);
-    rewind(file);
+    uint64_t length;
+    uint8_t* program = readFile("output.bin", &length);
 
-    uint8_t* buffer = malloc(size);
-    fread(buffer, 1, size, file);
-
-    fclose(file);
-
-    for(int i = 0; i < size; i++) {
-        memory_write_1(memory, buffer[i], i);
+    for(int i = 0; i < length; i++) {
+        memory_write_1(memory, program[i], i);
     }
+
+    printf("Done writing\n");
 
     Cpu cpu;
     cpu_create(&cpu, memory);
-
     auto start = clock();
     cpu_run(&cpu);
     auto end = clock();

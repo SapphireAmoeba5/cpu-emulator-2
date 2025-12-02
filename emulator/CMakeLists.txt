@@ -7,6 +7,8 @@ set(CMAKE_C_EXTENSIONS OFF)
 
 set(CMAKE_EXPORT_COMPILE_COMMANDS TRUE)
 
+# set(CMAKE_CXX_FLAGS, "-Wall")
+
 add_executable(${PROJECT_NAME}
     src/main.c
     src/cpu.c
