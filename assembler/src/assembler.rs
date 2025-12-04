@@ -131,9 +131,9 @@ impl ExprResult {
     /// Shortcut for making an ExprResult that is an immediate value, or displacement
     pub fn immediate(value: u64, mode: Mode) -> Self {
         let flags = match mode {
-            Mode::None => OperandFlags::IMM | OperandFlags::DISP,
+            Mode::None => OperandFlags::IMM | OperandFlags::DISP | OperandFlags::ADDR,
             Mode::Immediate => OperandFlags::IMM,
-            Mode::Addr => OperandFlags::DISP,
+            Mode::Addr => OperandFlags::DISP | OperandFlags::ADDR,
         };
 
         Self {
@@ -305,6 +305,7 @@ impl Assembler {
                         Ok(ExprResult::disp_relocation())
                     }
                 } else {
+                    // The symbol is a constant value
                     Ok(ExprResult::immediate(symbol.value, *mode))
                 }
             }
@@ -323,6 +324,10 @@ impl Assembler {
                     Ok(ExprResult { value, flags })
                 } else {
                     let flags = left.flags & right.flags;
+
+                    if flags.is_empty() {
+                        todo!("Figure out what to do when operand flags is empty")
+                    }
 
                     // Values are garunteed to be constants at this point
                     let left = left.value.constant();
@@ -549,6 +554,8 @@ impl Assembler {
                 ),
             }
         }
+
+        debug!("Chosen encoding: {chosen_encoding:?} {}:{}", self.filename, self.current_line);
 
         let instruction = Instruction {
             encoding,

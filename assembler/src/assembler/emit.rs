@@ -11,6 +11,30 @@ use crate::{
 use anyhow::{Context, Result, anyhow};
 use spdlog::debug;
 
+struct GPRegister(u8);
+
+impl GPRegister {
+    pub fn get_gp(&self) -> u8 {
+        // This value is garunteed to be a valid index for any GP register
+        self.0
+    }
+}
+
+impl TryFrom<Register> for GPRegister {
+    type Error = anyhow::Error;
+
+    fn try_from(value: Register) -> std::result::Result<Self, Self::Error> {
+        if let Some(index) = value.get_gp() {
+            Ok(Self(index))
+        } else {
+            let as_str: &str = value.into();
+            Err(anyhow!(
+                "{as_str} is not a general purpose register (r0 -> r15)"
+            ))
+        }
+    }
+}
+
 const EXTENSION_BYTE: u8 = 0x0f;
 
 #[derive(Debug, Copy, Clone, Eq, PartialEq)]
@@ -22,16 +46,29 @@ enum Size {
     U64 = 3,
 }
 
-fn reg_transfer_byte(dest: Register, src: Register) -> u8 {
+fn reg_transfer_byte(dest: GPRegister, src: GPRegister) -> u8 {
     /*
      *  reg/reg transfer byte encoding
      *     bit:   7 6 5 4   3 2 1 0
      * purpose:   dst reg | src reg
      */
-    dest.index() << 4 | src.index()
+    dest.get_gp() << 4 | src.get_gp()
 }
 
-// The imm/mem transfer byte encoding layout
+fn imm_transfer_byte(dest: GPRegister, size: Size, sign_extended: bool) -> u8 {
+    /*
+     *                 Byte layout
+     *     bit:   7 6 5 4    3 2    1 0
+     * purpose:    dest  | size |  sign extended     | reserved (always 0)
+     *
+     * the `size` field tells the CPU how bytes to read and also the size of the register to place
+     * the value in
+     */
+
+    dest.get_gp() << 4 | (size as u8) << 2 | (sign_extended as u8) << 1
+}
+
+// The mem transfer byte encoding layout
 /*
  *
  *      bit:  7 6 5 4       3 2       1 0
@@ -41,28 +78,23 @@ fn reg_transfer_byte(dest: Register, src: Register) -> u8 {
  *   0b00 | PC rel disp32
  *   0b01 | SP + Index * scale
  *   0b10 | Base + Index * scale
- *   0b11 | Immediate value (Doesn't reference memory)
+ *   0b11 | Immediate address
  */
 
-fn imm_transfer_byte(dest: Register, size: Size) -> u8 {
-    /*
-     *                 Byte layout
-     *     bit:   7 6 5 4    3 2       1 0
-     * purpose:    dest  | addr mode | size
-     */
-    dest.index() << 4 | 0b11 << 2 | (size as u8)
+fn disp_transfer_byte(dest: GPRegister, size: Size) -> u8 {
+    dest.get_gp() << 4 | 0b00 << 2 | (size as u8)
 }
 
-fn disp_transfer_byte(dest: Register, size: Size) -> u8 {
-    dest.index() << 4 | 0b00 << 2 | (size as u8)
+fn sp_rel_transfer_byte(dest: GPRegister, size: Size) -> u8 {
+    dest.get_gp() << 4 | 0b01 << 2 | (size as u8)
 }
 
-fn sp_rel_transfer_byte(dest: Register, size: Size) -> u8 {
-    dest.index() << 4 | 0b01 | (size as u8)
+fn base_index_transfer_byte(dest: GPRegister, size: Size) -> u8 {
+    dest.get_gp() << 4 | 0b10 << 2 | (size as u8)
 }
 
-fn base_index_transfer_byte(dest: Register, size: Size) -> u8 {
-    dest.index() << 4 | 0b10 | (size as u8)
+fn const_addr_transfer_byte(dest: GPRegister, size: Size) -> u8 {
+    dest.get_gp() << 4 | 0b11 << 2 | (size as u8)
 }
 
 fn immediate_fits(src: u64, options: OperandFlags) -> bool {
@@ -163,11 +195,13 @@ impl Assembler {
             // Maximum of two operands for any of these instructions
             debug_assert_eq!(instruction.operand_count, 2);
 
-            if instruction.types[1].intersects(OperandFlags::REG) {
+            if instruction.types[1].intersects(OperandFlags::GP_REG) {
                 let dest = instruction.operands[0].register();
+                // let dest = GPRegister::try_from(dest)?;
+
                 let src = instruction.operands[1].register();
 
-                let transfer_byte = reg_transfer_byte(dest, src);
+                let transfer_byte = reg_transfer_byte(dest.try_into()?, src.try_into()?);
                 self.get_section().write_u8(transfer_byte);
             } else if instruction.types[1].intersects(OperandFlags::IMM) {
                 // Two operands that are a register, and an immediate are garunteed
@@ -181,26 +215,46 @@ impl Assembler {
                     let expr = std::mem::replace(&mut instruction.exprs[1], None);
                     // Emit the relocation
                     self.emit_relocation(instruction.reloc[1], offset, expr.unwrap());
-                }
-
-                if options.intersects(encoding!(IMM_AS_ADDR)) {
-                    let transfer_byte = imm_transfer_byte(dest, Size::U64);
-                    self.get_section().write_u8(transfer_byte);
-
-                    self.get_section().write_u64(src);
                 } else if instruction.types[1].intersects(OperandFlags::IMM64) {
-
-                    let transfer_byte = imm_transfer_byte(dest, Size::U64);
+                    let transfer_byte = imm_transfer_byte(dest.try_into()?, Size::U64, false);
                     self.get_section().write_u8(transfer_byte);
 
                     self.get_section().write_u64(src);
                 }
+            } else if instruction.types[1].intersects(OperandFlags::ADDR) {
+                let dest = instruction.operands[0].register();
+                let src = instruction.operands[1].constant();
+
+                if instruction.reloc[1] != Relocation::None {
+                    // Add one to account for the transfer byte
+                    let offset = self.get_section().cursor() + 1;
+                    let expr = std::mem::replace(&mut instruction.exprs[1], None);
+                    self.emit_relocation(instruction.reloc[1], offset, expr.unwrap());
+                }
+
+                let size: Size;
+                if options.intersects(EncodingFlags::MEM64) {
+                    size = Size::U64;
+                } else if options.intersects(EncodingFlags::MEM32) {
+                    size = Size::U32;
+                } else if options.intersects(EncodingFlags::MEM16) {
+                    size = Size::U16;
+                } else if options.intersects(EncodingFlags::MEM8) {
+                    size = Size::U8;
+                } else {
+                    unreachable!("Unknown memory access size");
+                }
+
+                let transfer_byte = const_addr_transfer_byte(dest.try_into()?, size);
+
+                self.get_section().write_u8(transfer_byte);
+                self.get_section().write_u64(src);
             } else if instruction.types[1].intersects(OperandFlags::DISP32) {
                 let dest = instruction.operands[0].register();
                 let disp = instruction.operands[1].constant();
 
                 let memory_access_size = get_memory_access_size(options);
-                let transfer_byte = disp_transfer_byte(dest, memory_access_size);
+                let transfer_byte = disp_transfer_byte(dest.try_into()?, memory_access_size);
 
                 self.get_section().write_u8(transfer_byte);
 

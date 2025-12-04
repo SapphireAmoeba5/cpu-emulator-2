@@ -41,6 +41,7 @@ impl Into<&'static str> for Register {
             13 => "r13",
             14 => "r14",
             15 => "r15",
+            Self::SP_INDEX => "sp",
             _ => panic!("Can't have more than 32 registers"),
         };
 
@@ -49,20 +50,42 @@ impl Into<&'static str> for Register {
 }
 
 impl Register {
-    /// Panics if `index` is >= 16
-    pub fn new(index: u8) -> Self {
+    /// The number of indices starting from 0 up to and including `NUM_GP_REGISTERS - 1`
+    const NUM_GP_REGISTERS: u8 = 16;
+    /// The index used to specify that the register is the stack pointer
+    const SP_INDEX: u8 = 255;
+    /// If the register is a general purpose register
+    pub fn is_gp(&self) -> bool {
+        self.0 < Self::NUM_GP_REGISTERS
+    }
+    // Constructs a new general purpose register (r0 -> r15)
+    pub fn new_gp(index: u8) -> Self {
         assert!(index < 16);
 
         Self(index)
     }
-    /// Returns the register index
-    pub fn index(&self) -> u8 {
-        self.0
+
+    pub fn new_sp() -> Self {
+        Self(Self::SP_INDEX)
+    }
+    /// Returns the index of the register if its a GP
+    pub fn get_gp(&self) -> Option<u8> {
+        if self.is_gp() {
+            Some(self.0)
+        } else {
+            None
+        }
     }
 
     /// Returns the register type as OperandFlags
     pub fn get_operand_flag(&self) -> OperandFlags {
-        OperandFlags::REG
+        let mut flags = OperandFlags::REG;
+
+        if self.is_gp() {
+            flags |= OperandFlags::GP_REG;
+        }
+
+        flags
     }
 }
 
@@ -325,6 +348,10 @@ impl<'a> TokenIter<'a> {
     }
 
     fn register(token: &str) -> Option<Register> {
+        if token == "sp" {
+            return Some(Register::new_sp());
+        }
+
         // The type of register, whether its 8, 16, 32, or 64 bits
         let reg_type = token.chars().next().unwrap();
 
@@ -349,7 +376,7 @@ impl<'a> TokenIter<'a> {
         }
 
         match reg_type.to_ascii_lowercase() {
-            'r' => Some(Register::new(reg_id)),
+            'r' => Some(Register::new_gp(reg_id)),
             _ => None,
         }
     }

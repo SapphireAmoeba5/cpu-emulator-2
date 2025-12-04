@@ -16,7 +16,7 @@ typedef void (*instruction_f)(Cpu* cpu, uint8_t instruction[16]);
 // clang-format off
 static instruction_f instructions[256] = 
 {
-    /* 0x00 */ halt, intpt, invl, invl, invl, mov_reg, mov_imm_or_mem, str, invl, invl, invl, invl, invl, invl, invl, invl,
+    /* 0x00 */ halt, intpt, invl, invl, invl, mov_reg, mov_imm, mov_mem, str, invl, invl, invl, invl, invl, invl, invl,
     /* 0x10 */ invl, invl,  invl, invl, invl, invl, invl, invl, invl, invl, invl, invl, invl, invl, invl, invl,
     /* 0x20 */ invl, invl,  invl, invl, invl, invl, invl, invl, invl, invl, invl, invl, invl, invl, invl, invl,
     /* 0x30 */ invl, invl,  invl, invl, invl, invl, invl, invl, invl, invl, invl, invl, invl, invl, invl, invl,

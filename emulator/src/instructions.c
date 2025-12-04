@@ -122,6 +122,7 @@ void invl(Cpu* cpu, uint8_t instruction[16]) {
 
 void halt(Cpu* cpu, uint8_t instructions[16]) {
     cpu->ip += 1;
+    printf("INVALID INSTRUCTION\n");
     // printf("Halted after %lu clock cycles\n", cpu->clock_count);
     // for(int i = 0; i < 32; i++) {
     //     uint64_t value = cpu->registers[i].r;
@@ -148,9 +149,17 @@ void intpt(Cpu* cpu, uint8_t instruction[16]) {
     }
 }
 
-void parse_reg_transfer_byte(uint8_t byte, uint8_t* dest, uint8_t* src) {
+static inline void parse_reg_transfer_byte(uint8_t byte, uint8_t* dest, uint8_t* src) {
     *dest = (byte >> 4) & 0x0f;
     *src = byte & 0x0f;
+}
+
+/// `dest`, `size` and `sign_extend` must be non-null and valid pointers
+/// `size` will contain one of 0, 1, 2, 3
+static inline void parse_imm_transfer_byte(uint8_t byte, uint8_t* dest, int* size, bool* sign_extend) {
+    *dest = (byte >> 4) & 0x0f;
+    *size = (byte >> 2) & 0b11;
+    *sign_extend = (byte >> 1) & 1;
 }
 
 typedef enum {
@@ -158,7 +167,7 @@ typedef enum {
     SPRel = 1,
     // Base + Index * Scale
     BIS = 2,
-    Imm = 3,
+    Addr = 3,
 
 } addr_mode;
 
@@ -217,8 +226,43 @@ static inline bool load_pc_rel(Cpu* cpu, uint8_t instruction[16], uint8_t size, 
 
 static inline uint64_t get_sp_rel_addr(Cpu* cpu, uint8_t instruction[16]) {
     cpu->ip += 1;
+}
 
-    
+/// `value` must be non null and a valid pointer
+/// `size` must be either 0, 1, 2, or 3
+static inline bool load_from_mem(Cpu* cpu, uint64_t address, int size, uint64_t* value) {
+    switch (size) {
+    case 0: {
+        uint8_t byte;
+        if (!cpu_read_1(cpu, address, &byte)) {
+            return false;
+        }
+        *value = byte;
+        break;
+    }
+    case 1: {
+        uint16_t word;
+        if (!cpu_read_2(cpu, address, &word)) {
+            return false;
+        }
+        *value = word;
+        break;
+    }
+    case 2: {
+        uint32_t dword;
+        if (!cpu_read_4(cpu, address, &dword)) {
+            return false;
+        }
+        *value = dword;
+        break;
+    }
+    case 3: {
+        if (!cpu_read_8(cpu, address, value)) {
+            return false;
+        }
+    }
+    }
+    return true;
 }
 
 void mov_reg(Cpu* cpu, uint8_t instruction[16]) {
@@ -232,7 +276,7 @@ void mov_reg(Cpu* cpu, uint8_t instruction[16]) {
     cpu->registers[dest] = cpu->registers[src];
 }
 
-void mov_imm_or_mem(Cpu* cpu, uint8_t instruction[16]) {
+void mov_mem(Cpu* cpu, uint8_t instruction[16]) {
     // Opcode and the transfer byte
     cpu->ip += 2;
 
@@ -259,10 +303,14 @@ void mov_imm_or_mem(Cpu* cpu, uint8_t instruction[16]) {
         break;
     }
 
-    case Imm: {
-        cpu->ip += 1 << size;
+    case Addr: {
+        cpu->ip += 8;
+        // The address is always 8 bytes
+        uint64_t address;
         // Only works on little endian systems
-        memcpy(&value, &instruction[2], 1 << size);
+        memcpy(&address, &instruction[2], sizeof(address));
+        load_from_mem(cpu, address, size, &value);
+
         break;
     }
     }
@@ -270,12 +318,65 @@ void mov_imm_or_mem(Cpu* cpu, uint8_t instruction[16]) {
     switch (size) {
     case 0:
         cpu->registers[dest].b = value;
+        break;
     case 1:
         cpu->registers[dest].s = value;
+        break;
     case 2:
         cpu->registers[dest].w = value;
+        break;
     case 3:
         cpu->registers[dest].r = value;
+        break;
+    }
+}
+
+void mov_imm(Cpu* cpu, uint8_t instruction[16]) {
+    cpu->ip += 2;
+
+    uint8_t dest;
+    int size;
+    bool sign_extend;
+    parse_imm_transfer_byte(instruction[1], &dest, &size, &sign_extend);
+
+    cpu->ip += 1 << size;
+
+    uint64_t value = 0;
+    // Only works on little endian
+    memcpy(&value, &instruction[2], 1 << size);
+
+    switch (size) {
+    case 0: {
+        if (sign_extend) {
+            value = (int64_t)((int8_t)value);
+            cpu->registers[dest].r = value;
+        } else {
+            cpu->registers[dest].b = value;
+        }
+        break;
+    }
+    case 1: {
+        if (sign_extend) {
+            value = (int64_t)((int16_t)value);
+            cpu->registers[dest].r = value;
+        } else {
+            cpu->registers[dest].s = value;
+        }
+        break;
+    }
+    case 2: {
+        if (sign_extend) {
+            value = (int64_t)((int32_t)value);
+            cpu->registers[dest].r = value;
+        } else {
+            cpu->registers[dest].w = value;
+        }
+        break;
+    }
+    case 3: {
+        cpu->registers[dest].r = value;
+        break;
+    }
     }
 }
 
@@ -299,7 +400,7 @@ void str(Cpu* cpu, uint8_t instruction[16]) {
     case SPRel:
         assert(1 == 0);
         break;
-    case Imm:
+    case Addr:
         // The immediate value for the str instruction is always 8 bytes
         cpu->ip += 8;
 
