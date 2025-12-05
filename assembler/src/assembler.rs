@@ -323,10 +323,19 @@ impl Assembler {
 
                     Ok(ExprResult { value, flags })
                 } else {
-                    let flags = left.flags & right.flags;
+                    let mut flags = left.flags & right.flags;
 
                     if flags.is_empty() {
-                        todo!("Figure out what to do when operand flags is empty")
+                        if (left.flags | right.flags).intersects(OperandFlags::DISP) {
+                            flags |= OperandFlags::DISP;
+                        }
+                        if (left.flags | right.flags).intersects(OperandFlags::ADDR) {
+                            flags |= OperandFlags::ADDR;
+                        }
+
+                        if flags.is_empty() {
+                            unreachable!("This should be unreachable");
+                        }
                     }
 
                     // Values are garunteed to be constants at this point
