@@ -124,6 +124,9 @@ pub fn link(modules: Vec<Module>, script: Vec<Instr>) -> Result<Program, ()> {
             let relocation_offset =
                 section_offset[module_idx][relocation.section] + relocation.offset;
 
+            // TODO: Eventually we need to add types to the symbols in the symbol table and this
+            // will allow us to not have some is_addr booleon but instead be able to understand
+            // what the value of the symbol represents at a more granular level
             let (value, is_addr) = if let Some(symbol) =
                 module.symbols.get_symbol(&relocation.symbol)
             {
@@ -210,6 +213,9 @@ pub fn link(modules: Vec<Module>, script: Vec<Instr>) -> Result<Program, ()> {
                         module.filename
                     );
                     replace_bytes(&mut linked, relocation_offset, &value.to_le_bytes());
+                }
+                Relocation::Addr64 => {
+
                 }
 
                 // TODO: Implement the other fixup types

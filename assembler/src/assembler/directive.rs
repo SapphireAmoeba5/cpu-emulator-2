@@ -1,5 +1,8 @@
 use crate::{
-    assembler::{Assembler, ExprValue, symbol_table::Symbol}, expression::parse_expr, section::Section, tokens::{Directive, Token, TokenIter}
+    assembler::Assembler,
+    expression::parse_expr,
+    section::Section,
+    tokens::{Directive, Token, TokenIter},
 };
 use anyhow::{Context, Result, anyhow};
 use spdlog::debug;
@@ -53,16 +56,9 @@ impl Assembler {
 
     pub(super) fn parse_section_align(&mut self, tokens: &mut TokenIter) -> Result<()> {
         let expr = parse_expr(tokens)?;
-        let value = self.evalute_expression(&expr, Self::NO_SECTION)?;
-
-        let align = if let ExprValue::Constant(align) = value.value {
-            align
-        } else {
-            return Err(anyhow!("Invalid expression"));
-        };
+        let align = self.evaluate_non_operand_expression(&expr)?;
 
         let section = self.get_section_mut()?;
-        
 
         if align > section.alignment {
             section.alignment = align;
@@ -70,7 +66,7 @@ impl Assembler {
 
         let align: usize = align.try_into().unwrap();
         let n: usize = (align - (section.size() % align)) % align;
-        
+
         section.data.resize(section.data.len() + n, 0);
 
         Ok(())
@@ -78,20 +74,12 @@ impl Assembler {
 
     pub(super) fn parse_skip(&mut self, tokens: &mut TokenIter) -> Result<()> {
         let expr = parse_expr(tokens)?;
-        let skip_count = if let ExprValue::Constant(skip_count) = self.evalute_expression(&expr, Self::NO_SECTION)?.value {
-            skip_count
-        } else {
-            return Err(anyhow!("Invalid expression"));
-        };
+        let skip_count = self.evaluate_non_operand_expression(&expr)?;
 
         let fill_value: u8 = if let Some(Token::Comma) = tokens.peek()? {
             let _ = tokens.next();
             let fill_value_expr = parse_expr(tokens)?;
-            if let ExprValue::Constant(fill_value) = self.evalute_expression(&fill_value_expr, Self::NO_SECTION)?.value {
-                fill_value as u8
-            } else {
-                return Err(anyhow!("Invalid expression"));
-            }
+            self.evaluate_non_operand_expression(&fill_value_expr)? as u8
         } else {
             0
         };
@@ -123,56 +111,39 @@ impl Assembler {
 
     pub(super) fn parse_embed_u8(&mut self, tokens: &mut TokenIter) -> Result<()> {
         let expr = parse_expr(tokens)?;
-        let value = self.evalute_expression(&expr, Self::NO_SECTION)?;
+        let value = self.evaluate_non_operand_expression(&expr)?;
 
-        if let ExprValue::Constant(value) = value.value {
-            self.get_section_mut()?.write_u8(value.try_into().context("Constant is too large")?);
-        } else {
-            return Err(anyhow!("Invalid expression for a u64 embed"));
-        }
-
+        self.get_section_mut()?
+            .write_u8(value.try_into().context("Constant is too large")?);
 
         Ok(())
     }
 
     pub(super) fn parse_embed_u16(&mut self, tokens: &mut TokenIter) -> Result<()> {
         let expr = parse_expr(tokens)?;
-        let value = self.evalute_expression(&expr, Self::NO_SECTION)?;
+        let value = self.evaluate_non_operand_expression(&expr)?;
 
-        if let ExprValue::Constant(value) = value.value {
-            self.get_section_mut()?.write_u16(value.try_into().context("Constant is too large")?);
-        } else {
-            return Err(anyhow!("Invalid expression for a u64 embed"));
-        }
-
+        self.get_section_mut()?
+            .write_u16(value.try_into().context("Constant is too large")?);
 
         Ok(())
     }
 
     pub(super) fn parse_embed_u32(&mut self, tokens: &mut TokenIter) -> Result<()> {
         let expr = parse_expr(tokens)?;
-        let value = self.evalute_expression(&expr, Self::NO_SECTION)?;
+        let value = self.evaluate_non_operand_expression(&expr)?;
 
-        if let ExprValue::Constant(value) = value.value {
-            self.get_section_mut()?.write_u32(value.try_into().context("Constant is too large")?);
-        } else {
-            return Err(anyhow!("Invalid expression for a u64 embed"));
-        }
-
+        self.get_section_mut()?
+            .write_u32(value.try_into().context("Constant is too large")?);
 
         Ok(())
     }
 
     pub(super) fn parse_embed_u64(&mut self, tokens: &mut TokenIter) -> Result<()> {
         let expr = parse_expr(tokens)?;
-        let value = self.evalute_expression(&expr, Self::NO_SECTION)?;
+        let value = self.evaluate_non_operand_expression(&expr)?;
 
-        if let ExprValue::Constant(value) = value.value {
-            self.get_section_mut()?.write_u64(value);
-        } else {
-            return Err(anyhow!("Invalid expression for a u64 embed"));
-        }
-
+        self.get_section_mut()?.write_u64(value);
 
         Ok(())
     }

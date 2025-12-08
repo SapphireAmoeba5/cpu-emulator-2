@@ -130,7 +130,7 @@ fn get_size(value: u64) -> Size {
 
 fn get_size_from_relocation(reloc: Relocation) -> Size {
     match reloc {
-        Relocation::Abs64 | Relocation::PC64 => Size::U64,
+        Relocation::Abs64 | Relocation::PC64 | Relocation::Addr64 => Size::U64,
         Relocation::Abs32 | Relocation::PC32 => Size::U32,
         Relocation::Abs16 => Size::U16,
         Relocation::Abs8 | Relocation::PC8 => Size::U8,
@@ -215,7 +215,9 @@ impl Assembler {
                     let expr = std::mem::replace(&mut instruction.exprs[1], None);
                     // Emit the relocation
                     self.emit_relocation(instruction.reloc[1], offset, expr.unwrap());
-                } else if instruction.types[1].intersects(OperandFlags::IMM64) {
+                } 
+
+                if instruction.types[1].intersects(OperandFlags::IMM64) {
                     let transfer_byte = imm_transfer_byte(dest.try_into()?, Size::U64, false);
                     self.get_section().write_u8(transfer_byte);
 

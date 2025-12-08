@@ -128,6 +128,7 @@ pub enum Relocation {
     PC8,
     PC32,
     PC64,
+    Addr64,
 }
 
 #[derive(Debug, Clone, Copy)]

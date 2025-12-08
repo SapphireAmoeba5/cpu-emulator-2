@@ -52,8 +52,8 @@ fn evaluate_expression(
         // This should have errored out earlier in the code
         Node::Register(_) => unreachable!(),
 
-        Node::Constant(value, _) => (String::new(), *value),
-        Node::Identifier(symbol, _) => match assembler.symbols.get_symbol(&symbol) {
+        Node::Constant(value) => (String::new(), *value),
+        Node::Identifier(symbol) => match assembler.symbols.get_symbol(&symbol) {
             Some(value) => {
                 // The symbol is label, otherwise it's a constant value
                 if let Some(section_idx) = value.section_index {

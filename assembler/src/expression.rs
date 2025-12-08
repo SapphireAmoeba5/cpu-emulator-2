@@ -22,6 +22,8 @@ impl BinaryOp {
         }
     }
 
+    /// Convienence function that will automatically perform the operation on `lhs` and `rhs` with
+    /// wrapping semantics 
     pub fn calculate(&self, lhs: u64, rhs: u64) -> u64 {
         match self {
             BinaryOp::Add => lhs.wrapping_add(rhs),
@@ -81,9 +83,9 @@ pub enum Mode {
 
 #[derive(Debug, Clone)]
 pub enum Node {
-    Constant(u64, Mode),
+    Constant(u64),
     Register(Register),
-    Identifier(String, Mode),
+    Identifier(String),
     BinaryOp {
         op: BinaryOp,
         left: Box<Self>,
@@ -117,31 +119,11 @@ pub fn parse_expr(tokens: &mut TokenIter) -> Result<Box<Node>> {
 }
 
 fn parse_constant(tokens: &mut TokenIter) -> Result<Box<Node>> {
-    let mut mode = Mode::None;
-    match tokens.peek()? {
-        Some(Token::Mul) => mode = Mode::Addr,
-        Some(Token::Dollar) => mode = Mode::Immediate,
-        _ => {}
-    }
-
-    if mode != Mode::None {
-        _ = tokens.next();
-    }
-
     let node = match tokens.next()?.with_context(|| "Expected token")? {
-        Token::Number(num) => Node::Constant(num, mode),
-        Token::Register(reg) => {
-            if mode != Mode::None {
-                return Err(anyhow!("Cannot use mode specifier with registers"));
-            }
-
-            Node::Register(reg)
-        }
-        Token::Identifier(id) => Node::Identifier(id, mode),
+        Token::Number(num) => Node::Constant(num),
+        Token::Register(reg) => Node::Register(reg),
+        Token::Identifier(id) => Node::Identifier(id),
         Token::LBrace => {
-            if mode != Mode::None {
-                return Err(anyhow!("Cannot use mode specifier before a sub-expression"));
-            }
             // tokens.next().unwrap().unwrap();
             let expr = parse_expr(tokens)?;
             match tokens.next()? {
@@ -150,9 +132,6 @@ fn parse_constant(tokens: &mut TokenIter) -> Result<Box<Node>> {
             }
         }
         unary_op => {
-            if mode != Mode::None {
-                return Err(anyhow!("Cannot use mode specifier before a unary operator"));
-            }
             match UnaryOp::try_from(unary_op) {
                 Ok(op) => Node::UnaryOp {
                     op,
@@ -185,9 +164,9 @@ fn insert_into_tree(left: &mut Box<Node>, op: BinaryOp, right: Box<Node>) {
 
     match &mut **left {
         // These expression nodes are always insertion points for any operator
-        Node::Constant(_, _)
+        Node::Constant(_)
         | Node::Register(_)
-        | Node::Identifier(_, _)
+        | Node::Identifier(_)
         | Node::Expression(_)
         | Node::UnaryOp { .. } => {
             insert_as_binary_op(left, op, right);

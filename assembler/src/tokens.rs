@@ -54,6 +54,8 @@ impl Register {
     const NUM_GP_REGISTERS: u8 = 16;
     /// The index used to specify that the register is the stack pointer
     const SP_INDEX: u8 = 255;
+    /// A register value used to mean there is no register
+    const INVALID_REGISTER: u8 = 254;
     /// If the register is a general purpose register
     pub fn is_gp(&self) -> bool {
         self.0 < Self::NUM_GP_REGISTERS
@@ -67,6 +69,10 @@ impl Register {
 
     pub fn new_sp() -> Self {
         Self(Self::SP_INDEX)
+    }
+
+    pub fn none() -> Self {
+        Self(Self::INVALID_REGISTER)
     }
     /// Returns the index of the register if its a GP
     pub fn get_gp(&self) -> Option<u8> {
@@ -130,6 +136,9 @@ pub enum Token {
     Mul,
     Div,
     Caret,
+    Ampersand,
+    /// The @ symbol
+    AtSign,
     Colon,
     Dollar,
     Newline,
@@ -153,6 +162,8 @@ impl ToString for Token {
             Self::Mul => "*".to_string(),
             Self::Div => "/".to_string(),
             Self::Caret => "^".to_string(),
+            Self::Ampersand => "&".to_string(),
+            Self::AtSign => "@".to_string(),
             Self::Colon => ":".to_string(),
             Self::Dollar => "$".to_string(),
             Self::Newline => "Newline".to_string(),
@@ -302,6 +313,8 @@ impl<'a> TokenIter<'a> {
             "*" => Some(Token::Mul),
             "/" => Some(Token::Div),
             "^" => Some(Token::Caret),
+            "&" => Some(Token::Ampersand),
+            "@" => Some(Token::AtSign),
             ":" => Some(Token::Colon),
             "$" => Some(Token::Dollar),
             _ => None,

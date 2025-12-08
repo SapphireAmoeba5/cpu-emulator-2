@@ -116,13 +116,13 @@ bool checked_div_u64(uint64_t* result, uint64_t a, uint64_t b) {
 }
 
 void invl(Cpu* cpu, uint8_t instruction[16]) {
-    printf("Invalid instruction opcode: %d\n", (uint32_t)instruction[0]);
+    printf("Invalid instruction opcode: %02x (dec: %d)\n", (uint32_t)instruction[0], (int32_t)instruction[0]);
     exit(1);
 }
 
 void halt(Cpu* cpu, uint8_t instructions[16]) {
     cpu->ip += 1;
-    printf("INVALID INSTRUCTION\n");
+    printf("REACHED HALT\n");
     // printf("Halted after %lu clock cycles\n", cpu->clock_count);
     // for(int i = 0; i < 32; i++) {
     //     uint64_t value = cpu->registers[i].r;
