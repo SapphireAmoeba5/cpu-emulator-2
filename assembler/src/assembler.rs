@@ -624,12 +624,12 @@ impl Assembler {
                     /// Always set the flags associated with immediate values
                     Constant,
                     /// Always set every flags associated with reading from memory
-                    MEMORY,
+                    Memory,
                     /// Always set the flags associated with hardcoded addresses
-                    ADDR,
+                    Addr,
                     /// Always set the flags associated with reading from memory with PC relative
                     /// displacements
-                    OFFSET,
+                    Offset,
                 }
 
                 expecting_comma = true;
@@ -642,15 +642,15 @@ impl Assembler {
                     }
                     Some(Token::Mul) => {
                         let _ = tokens.next();
-                        FlagOverride::MEMORY
+                        FlagOverride::Memory
                     }
                     Some(Token::AtSign) => {
                         let _ = tokens.next();
-                        FlagOverride::ADDR
+                        FlagOverride::Addr
                     }
                     Some(Token::Ampersand) => {
                         let _ = tokens.next();
-                        FlagOverride::OFFSET
+                        FlagOverride::Offset
                     }
                     _ => FlagOverride::None,
                 };
@@ -678,9 +678,9 @@ impl Assembler {
                     (*operand, *op_type) = match flag_override {
                         FlagOverride::None => get_operand_from_expr_result(result),
                         FlagOverride::Constant => (Operand::Constant(result.immediate), operand!(IMM)),
-                        FlagOverride::MEMORY => (Operand::Constant(result.immediate), operand!(ADDR | DISP)),
-                        FlagOverride::ADDR => (Operand::Constant(result.immediate), operand!(ADDR)),
-                        FlagOverride::OFFSET => (Operand::Constant(result.immediate), operand!(DISP)),
+                        FlagOverride::Memory => (Operand::Constant(result.immediate), operand!(ADDR | DISP)),
+                        FlagOverride::Addr => (Operand::Constant(result.immediate), operand!(ADDR)),
+                        FlagOverride::Offset => (Operand::Constant(result.immediate), operand!(DISP)),
                         
                     };
                 } else {
