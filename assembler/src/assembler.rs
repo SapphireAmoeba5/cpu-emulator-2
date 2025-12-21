@@ -11,7 +11,7 @@ use std::usize;
 use anyhow::anyhow;
 use spdlog::debug;
 
-use crate::assembler::symbol_table::SymbolTable;
+use crate::assembler::symbol_table::{SymbolTable, Type};
 use crate::expression::{Mode, Node, parse_expr};
 use crate::instruction::Mnemonic;
 use crate::opcode::{
@@ -167,7 +167,7 @@ impl Assembler {
 impl Assembler {
     /// Does the fixup
     fn do_fixup(&mut self, relocation: &ForwardReferenceEntry) -> Result<bool> {
-        let result = self.evalute_expression(&relocation.expr, relocation.section)?;
+        let result = self.evaluate_expression(&relocation.expr, relocation.section)?;
 
         assert!(matches!(result.type_, ExprType::Constant));
 
@@ -250,7 +250,7 @@ impl Assembler {
         }
     }
 
-    fn evalute_expression(&self, expr: &Box<Node>, current_section: usize) -> Result<ExprResult> {
+    fn evaluate_expression(&self, expr: &Box<Node>, current_section: usize) -> Result<ExprResult> {
         match &**expr {
             Node::Constant(value) => Ok(ExprResult::new_imm(*value)),
             Node::Register(register) => Ok(ExprResult {
@@ -297,10 +297,10 @@ impl Assembler {
                     })
                 }
             }
-            Node::Expression(expr) => self.evalute_expression(expr, current_section),
+            Node::Expression(expr) => self.evaluate_expression(expr, current_section),
             Node::BinaryOp { op, left, right } => {
-                let left = self.evalute_expression(left, current_section)?;
-                let right = self.evalute_expression(right, current_section)?;
+                let left = self.evaluate_expression(left, current_section)?;
+                let right = self.evaluate_expression(right, current_section)?;
 
                 if left.type_ == ExprType::Register || right.type_ == ExprType::Register {
                     Err(anyhow!("Invalid operation on register"))
@@ -327,7 +327,7 @@ impl Assembler {
             }
 
             Node::UnaryOp { op, expr } => {
-                let operand = self.evalute_expression(expr, current_section)?;
+                let operand = self.evaluate_expression(expr, current_section)?;
 
                 if operand.type_ == ExprType::Register {
                     Err(anyhow!("Invalid operation on register"))
@@ -346,7 +346,7 @@ impl Assembler {
     }
 
     fn evaluate_non_operand_expression(&self, expr: &Box<Node>) -> Result<u64> {
-        let result = self.evalute_expression(expr, Self::NO_SECTION)?;
+        let result = self.evaluate_expression(expr, Self::NO_SECTION)?;
 
         if result.is_label {
             return Err(anyhow!("Cannot use labels here"));
@@ -656,7 +656,7 @@ impl Assembler {
                 };
 
                 let expr = parse_expr(tokens)?;
-                let result = self.evalute_expression(&expr, current_section)?;
+                let result = self.evaluate_expression(&expr, current_section)?;
 
                 if let Some(operand) = operands.get_mut(num_operands)
                     && let Some(reloc_needed) = reloc_needed.get_mut(num_operands)
@@ -720,7 +720,7 @@ impl Assembler {
             self.sections[current_section].name
         );
         self.symbols
-            .insert_symbol(name, position as u64, Some(current_section))?;
+            .insert_symbol(name, position as u64, Type::Label, Some(current_section))?;
 
         Ok(())
     }
@@ -734,13 +734,13 @@ impl Assembler {
         tokens.is_equal_sign()?;
 
         let expr = parse_expr(tokens)?;
-        let value = self.evalute_expression(&expr, Self::NO_SECTION)?;
+        let value = self.evaluate_expression(&expr, Self::NO_SECTION)?;
         if value.relocation || value.is_label || value.type_ != ExprType::Constant {
             return Err(anyhow!("Invalid expression for constant"));
         }
 
         tokens.newline_or_eof()?;
-        self.symbols.insert_symbol(name, value.immediate, None)
+        self.symbols.insert_symbol(name, value.immediate, Type::Constant, None)
     }
 }
 

@@ -5,7 +5,7 @@ use std::collections::{HashMap, hash_map::Entry};
 use crate::{
     assembler::{
         Assembler, calculate_disp32_offset,
-        symbol_table::{self, Symbol, SymbolTable},
+        symbol_table::{self, Symbol, SymbolTable, Type},
     },
     module::Module,
     opcode::Relocation,
@@ -127,26 +127,29 @@ pub fn link(modules: Vec<Module>, script: Vec<Instr>) -> Result<Program, ()> {
             // TODO: Eventually we need to add types to the symbols in the symbol table and this
             // will allow us to not have some is_addr booleon but instead be able to understand
             // what the value of the symbol represents at a more granular level
-            let (value, is_addr) = if let Some(symbol) =
+            let (value, type_) = if let Some(symbol) =
                 module.symbols.get_symbol(&relocation.symbol)
             {
-                if let Some(section) = symbol.section_index {
+                let value = if let Some(section) = symbol.section_index {
                     // TODO: Handle the case where the section won't be included in the final
                     // program
                     let offset: u64 = section_offset[module_idx][section].try_into().unwrap();
-                    (symbol.value + offset, true)
+                    symbol.value + offset
                 } else {
-                    (symbol.value, false)
-                }
+                        symbol.value
+                };
+
+                (value, symbol.type_)
             } else if let Some(global) = globals.get(&relocation.symbol) {
-                if let Some(section) = global.symbol.section_index {
+                let value  = if let Some(section) = global.symbol.section_index {
                     // TODO: Handle the case where the section won't be included in the final
                     // program
                     let offset: u64 = section_offset[global.module][section].try_into().unwrap();
-                    (global.symbol.value + offset, true)
+                    global.symbol.value + offset
                 } else {
-                    (global.symbol.value, false)
-                }
+                    global.symbol.value
+                };
+                (value, global.symbol.type_)
             } else {
                 linker_error(
                     &mut failed,
@@ -164,13 +167,13 @@ pub fn link(modules: Vec<Module>, script: Vec<Instr>) -> Result<Program, ()> {
                         "PC32 relocation at {} {section_name}:+{:#x}",
                         module.filename, relocation_offset
                     );
-                    if !is_addr {
+                    if type_ != Type::Label {
                         linker_error(
                             &mut failed,
                             &module.filename,
                             section_name,
                             relocation_offset,
-                            "Attempting to perform a PC32 relocation on a constant".to_string(),
+                            format!("Attempting to perform a PC32 relocation on a {type_}"),
                         );
                         continue;
                     }
@@ -197,13 +200,13 @@ pub fn link(modules: Vec<Module>, script: Vec<Instr>) -> Result<Program, ()> {
                     replace_bytes(&mut linked, relocation_offset, &offset.to_le_bytes());
                 }
                 Relocation::Abs64 => {
-                    if is_addr {
+                    if type_ != Type::Constant {
                         linker_error(
                             &mut failed,
                             &module.filename,
                             section_name,
                             relocation_offset,
-                            "ABS64 relocation on a PC32 relative symbol".to_string(),
+                            format!("ABS64 relocation on a {type_}"),
                         );
                         continue;
                     }
@@ -215,7 +218,16 @@ pub fn link(modules: Vec<Module>, script: Vec<Instr>) -> Result<Program, ()> {
                     replace_bytes(&mut linked, relocation_offset, &value.to_le_bytes());
                 }
                 Relocation::Addr64 => {
-
+                    if type_ != Type::Constant {
+                        linker_error(
+                            &mut failed,
+                            &module.filename,
+                            section_name,
+                            relocation_offset,
+                            "ADDR64 relocation on a constant".to_string(),
+                        );
+                        continue;
+                    }
                 }
 
                 // TODO: Implement the other fixup types
