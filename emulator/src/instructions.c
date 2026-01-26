@@ -9,6 +9,59 @@
 #include <stdlib.h>
 #include <string.h>
 
+#define INT_SUB_OVERFLOW_CHECK(A, B) __builtin_sub_overflow_p((A), (B), 0)
+
+#define REG_OPERATION(OP)                                                      \
+    cpu->ip += 2;                                                              \
+    uint8_t transfer_byte = instruction[1];                                    \
+    uint8_t dest;                                                              \
+    uint8_t src;                                                               \
+    parse_reg_transfer_byte(transfer_byte, &dest, &src);                       \
+    cpu->registers[dest] = cpu->registers[src];
+
+#define IMM_OPERATION(OP)                                                      \
+    cpu->ip += 2;                                                              \
+    uint8_t dest;                                                              \
+    int size;                                                                  \
+    bool sign_extend;                                                          \
+    parse_imm_transfer_byte(instruction[1], &dest, &size, &sign_extend);       \
+    cpu->ip += 1 << size;                                                      \
+    uint64_t value = 0;                                                        \
+    memcpy(&value, &instruction[2], 1 << size);                                \
+    switch (size) {                                                            \
+    case 0: {                                                                  \
+        if (sign_extend) {                                                     \
+            value = (int64_t)((int8_t)value);                                  \
+            cpu->registers[dest].r OP value;                                   \
+        } else {                                                               \
+            cpu->registers[dest].b OP value;                                   \
+        }                                                                      \
+        break;                                                                 \
+    }                                                                          \
+    case 1: {                                                                  \
+        if (sign_extend) {                                                     \
+            value = (int64_t)((int16_t)value);                                 \
+            cpu->registers[dest].r OP value;                                   \
+        } else {                                                               \
+            cpu->registers[dest].s OP value;                                   \
+        }                                                                      \
+        break;                                                                 \
+    }                                                                          \
+    case 2: {                                                                  \
+        if (sign_extend) {                                                     \
+            value = (int64_t)((int32_t)value);                                 \
+            cpu->registers[dest].r OP value;                                   \
+        } else {                                                               \
+            cpu->registers[dest].w OP value;                                   \
+        }                                                                      \
+        break;                                                                 \
+    }                                                                          \
+    case 3: {                                                                  \
+        cpu->registers[dest].r OP value;                                       \
+        break;                                                                 \
+    }                                                                          \
+    }
+
 // Split into two different structs because the encoding is slightly different
 typedef struct dest_byte {
     uint8_t reg_index;
@@ -32,15 +85,15 @@ srcbyte get_src_byte(uint8_t byte) {
     return srcbyte;
 }
 
-#define checked_div(result, a, b)  \
-    _Generic((a),                  \
-        int8_t: checked_div_i8,    \
-        int16_t: checked_div_i16,  \
-        int32_t: checked_div_i32,  \
-        int64_t: checked_div_i64,  \
-        uint8_t: checked_div_u8,   \
-        uint16_t: checked_div_u16, \
-        uint32_t: checked_div_u32, \
+#define checked_div(result, a, b)                                              \
+    _Generic((a),                                                              \
+        int8_t: checked_div_i8,                                                \
+        int16_t: checked_div_i16,                                              \
+        int32_t: checked_div_i32,                                              \
+        int64_t: checked_div_i64,                                              \
+        uint8_t: checked_div_u8,                                               \
+        uint16_t: checked_div_u16,                                             \
+        uint32_t: checked_div_u32,                                             \
         uint64_t: checked_div_u64)(result, a, b)
 
 bool checked_div_i8(int8_t* result, int8_t a, int8_t b) {
@@ -116,7 +169,8 @@ bool checked_div_u64(uint64_t* result, uint64_t a, uint64_t b) {
 }
 
 void invl(Cpu* cpu, uint8_t instruction[16]) {
-    printf("Invalid instruction opcode: %02x (dec: %d)\n", (uint32_t)instruction[0], (int32_t)instruction[0]);
+    printf("Invalid instruction opcode: %02x (dec: %d)\n",
+           (uint32_t)instruction[0], (int32_t)instruction[0]);
     exit(1);
 }
 
@@ -143,20 +197,35 @@ void intpt(Cpu* cpu, uint8_t instruction[16]) {
             printf("r%lu = %016lx (%ld)\n", (uint64_t)i, value, (int64_t)value);
         }
 
-        printf("ip: %lu/%lu\nsp: %lu\n", cpu->ip, memory_size_bytes(cpu->memory), cpu->sp);
+        printf("ip: %lu/%lu\nsp: %lu\n", cpu->ip,
+               memory_size_bytes(cpu->memory), cpu->sp);
+
+        printf("%b\n", cpu->flags);
 
         cpu->exit = true;
     }
+    else if(index == 0x81) {
+        cpu->registers[0].r -= 1;
+        cpu->flags &= ~FLAG_ZERO;
+        if(cpu->registers[0].r == 0) {
+            cpu->flags |= FLAG_ZERO;
+        }
+    }
+    else if(index == 0x82) {
+        printf("DEBUG PRINT %llu\n", cpu->clock_count);
+    }
 }
 
-static inline void parse_reg_transfer_byte(uint8_t byte, uint8_t* dest, uint8_t* src) {
+static inline void parse_reg_transfer_byte(uint8_t byte, uint8_t* dest,
+                                           uint8_t* src) {
     *dest = (byte >> 4) & 0x0f;
     *src = byte & 0x0f;
 }
 
 /// `dest`, `size` and `sign_extend` must be non-null and valid pointers
 /// `size` will contain one of 0, 1, 2, 3
-static inline void parse_imm_transfer_byte(uint8_t byte, uint8_t* dest, int* size, bool* sign_extend) {
+static inline void parse_imm_transfer_byte(uint8_t byte, uint8_t* dest,
+                                           int* size, bool* sign_extend) {
     *dest = (byte >> 4) & 0x0f;
     *size = (byte >> 2) & 0b11;
     *sign_extend = (byte >> 1) & 1;
@@ -172,14 +241,17 @@ typedef enum {
 } addr_mode;
 
 /// `dest`, `addr_mode`, and `size` must not be NULL and be valid pointers
-/// `size` will be assigned 0, 1, 2, or 3 which encodes the byte width as a power of two
-static inline void parse_transfer_byte(uint8_t byte, uint8_t* dest, addr_mode* addr_mode, uint8_t* size) {
+/// `size` will be assigned 0, 1, 2, or 3 which encodes the byte width as a
+/// power of two
+static inline void parse_transfer_byte(uint8_t byte, uint8_t* dest,
+                                       addr_mode* addr_mode, uint8_t* size) {
     *dest = (byte >> 4) & 0x0f;
     *addr_mode = (byte >> 2) & 0b11;
     *size = byte & 0b11;
 }
 
-// TODO: Make the passed in `instruction` start at the beginning of where the function should start computing
+// TODO: Make the passed in `instruction` start at the beginning of where the
+// function should start computing
 static inline uint64_t get_pc_rel_addr(Cpu* cpu, uint8_t instruction[16]) {
     cpu->ip += 4;
     int32_t off = 0;
@@ -189,7 +261,8 @@ static inline uint64_t get_pc_rel_addr(Cpu* cpu, uint8_t instruction[16]) {
     return address;
 }
 
-static inline bool load_pc_rel(Cpu* cpu, uint8_t instruction[16], uint8_t size, uint64_t* value) {
+static inline bool load_pc_rel(Cpu* cpu, uint8_t instruction[16], uint8_t size,
+                               uint64_t* value) {
     uint64_t address = get_pc_rel_addr(cpu, instruction);
 
     switch (size) {
@@ -230,7 +303,8 @@ static inline uint64_t get_sp_rel_addr(Cpu* cpu, uint8_t instruction[16]) {
 
 /// `value` must be non null and a valid pointer
 /// `size` must be either 0, 1, 2, or 3
-static inline bool load_from_mem(Cpu* cpu, uint64_t address, int size, uint64_t* value) {
+static inline bool load_from_mem(Cpu* cpu, uint64_t address, int size,
+                                 uint64_t* value) {
     switch (size) {
     case 0: {
         uint8_t byte;
@@ -268,11 +342,9 @@ static inline bool load_from_mem(Cpu* cpu, uint64_t address, int size, uint64_t*
 void mov_reg(Cpu* cpu, uint8_t instruction[16]) {
     cpu->ip += 2;
     uint8_t transfer_byte = instruction[1];
-
     uint8_t dest;
     uint8_t src;
     parse_reg_transfer_byte(transfer_byte, &dest, &src);
-
     cpu->registers[dest] = cpu->registers[src];
 }
 
@@ -333,18 +405,13 @@ void mov_mem(Cpu* cpu, uint8_t instruction[16]) {
 
 void mov_imm(Cpu* cpu, uint8_t instruction[16]) {
     cpu->ip += 2;
-
     uint8_t dest;
     int size;
     bool sign_extend;
     parse_imm_transfer_byte(instruction[1], &dest, &size, &sign_extend);
-
     cpu->ip += 1 << size;
-
     uint64_t value = 0;
-    // Only works on little endian
     memcpy(&value, &instruction[2], 1 << size);
-
     switch (size) {
     case 0: {
         if (sign_extend) {
@@ -378,6 +445,44 @@ void mov_imm(Cpu* cpu, uint8_t instruction[16]) {
         break;
     }
     }
+}
+
+void sub_reg(Cpu* cpu, uint8_t instruction[16]) {
+    cpu->ip += 2;
+    uint8_t transfer_byte = instruction[1];
+    uint8_t dest;
+    uint8_t src;
+    parse_reg_transfer_byte(transfer_byte, &dest, &src);
+    uint64_t left = cpu->registers[dest].r;
+    uint64_t right = cpu->registers[src].r;
+    uint64_t difference;
+
+    cpu->flags &= ~(FLAG_ZERO | FLAG_CARRY | FLAG_OVERFLOW | FLAG_SIGN);
+
+    if(__builtin_sub_overflow(left, right, &difference)) {
+        cpu->flags |= FLAG_CARRY;
+    }
+
+    int64_t tmp;
+    if(__builtin_sub_overflow((int64_t)left, (int64_t)right, &tmp)) {
+        cpu->flags |= FLAG_OVERFLOW;
+    }
+
+
+    if(difference == 0) {
+        cpu->flags |= FLAG_ZERO;
+    }
+    if((int64_t)difference < 0) {
+        cpu->flags |= FLAG_SIGN;
+    }
+
+    cpu->registers[dest].r = difference;
+}
+void sub_mem(Cpu* cpu, uint8_t instruction[16]) {
+
+}
+void sub_imm(Cpu* cpu, uint8_t instruction[16]) {
+
 }
 
 void str(Cpu* cpu, uint8_t instruction[16]) {
@@ -423,5 +528,21 @@ void str(Cpu* cpu, uint8_t instruction[16]) {
         break;
     default:
         __builtin_unreachable();
+    }
+}
+
+void jmp(Cpu* cpu, uint8_t instruction[16]) {
+    cpu->ip += 5;
+    int32_t offset;
+    memcpy(&offset, &instruction[1], sizeof(offset));
+    cpu->ip += (int64_t)offset;
+}
+
+void jnz(Cpu* cpu, uint8_t instruction[16]) {
+    cpu->ip += 5;
+    if((cpu->flags & FLAG_ZERO) == 0) {
+        int32_t offset;
+        memcpy(&offset, &instruction[1], sizeof(offset));
+        cpu->ip += (int64_t)offset;
     }
 }

@@ -355,6 +355,8 @@ impl<'a> TokenIter<'a> {
             "and" => Some(Mnemonic::And),
             "or" => Some(Mnemonic::Or),
             "xor" => Some(Mnemonic::Xor),
+            "jmp" => Some(Mnemonic::Jmp),
+            "jnz" => Some(Mnemonic::Jnz),
             "int" => Some(Mnemonic::Int),
             _ => None,
         }

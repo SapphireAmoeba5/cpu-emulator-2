@@ -111,7 +111,7 @@ bitflags! {
         * */
         const SYS_CONTROL = bit!(10);
 
-
+        const JMP = bit!(11);
     }
 }
 
@@ -202,10 +202,12 @@ static ENCODING_TABLE: LazyLock<[Vec<InstEncoding>; Mnemonic::COUNT]> = LazyLock
         ]),
 
         (Mnemonic::Sub, vec![
-            InstEncoding::new(0x25, false, encoding!(DATA_TRANSFER), [OperandFlags::GP_REG, OperandFlags::GP_REG, OperandFlags::empty()]),
+            InstEncoding::new(0x025, false, encoding!(DATA_TRANSFER), [OperandFlags::GP_REG, OperandFlags::GP_REG, OperandFlags::empty()]),
 
-            InstEncoding::new(0x26, false, encoding!(DATA_TRANSFER), [OperandFlags::GP_REG, OperandFlags::IMM64, OperandFlags::empty()]),
-            InstEncoding::new(0x26, false, encoding!(DATA_TRANSFER), [OperandFlags::GP_REG, OperandFlags::DISP32, OperandFlags::empty()]),
+            InstEncoding::new(0x026, false, encoding!(DATA_TRANSFER), [OperandFlags::GP_REG, OperandFlags::IMM64, OperandFlags::empty()]),
+
+            InstEncoding::new(0x027, false, encoding!(DATA_TRANSFER | MEM64), [OperandFlags::GP_REG, OperandFlags::ADDR64, OperandFlags::empty()]),
+            InstEncoding::new(0x027, false, encoding!(DATA_TRANSFER | MEM64), [OperandFlags::GP_REG, OperandFlags::DISP32, OperandFlags::empty()]),
         ]),
 
         (Mnemonic::Mul, vec![
@@ -248,6 +250,13 @@ static ENCODING_TABLE: LazyLock<[Vec<InstEncoding>; Mnemonic::COUNT]> = LazyLock
 
             InstEncoding::new(0x86, false, encoding!(DATA_TRANSFER), [OperandFlags::GP_REG, OperandFlags::IMM64, OperandFlags::empty()]),
             InstEncoding::new(0x86, false, encoding!(DATA_TRANSFER), [OperandFlags::GP_REG, OperandFlags::DISP32, OperandFlags::empty()]),
+        ]),
+
+        (Mnemonic::Jmp, vec![
+            InstEncoding::new(0x10, false, encoding!(JMP), [OperandFlags::DISP32, OperandFlags::empty(), OperandFlags::empty()]),
+        ]),
+        (Mnemonic::Jnz, vec![
+            InstEncoding::new(0x11, false, encoding!(JMP), [OperandFlags::DISP32, OperandFlags::empty(), OperandFlags::empty()]),
         ]),
 
         (Mnemonic::Int, vec![

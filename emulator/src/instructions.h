@@ -14,4 +14,11 @@ void mov_reg(Cpu* cpu, uint8_t instruction[16]);
 void mov_mem(Cpu* cpu, uint8_t instruction[16]);
 void mov_imm(Cpu* cpu, uint8_t instruction[16]);
 
+void sub_reg(Cpu* cpu, uint8_t instruction[16]);
+void sub_mem(Cpu* cpu, uint8_t instruction[16]);
+void sub_imm(Cpu* cpu, uint8_t instruction[16]);
+
 void str(Cpu* cpu, uint8_t instruction[16]);
+
+void jmp(Cpu* cpu, uint8_t instruction[16]);
+void jnz(Cpu* cpu, uint8_t instruction[16]);

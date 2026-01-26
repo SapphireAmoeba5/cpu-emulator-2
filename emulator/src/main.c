@@ -1,11 +1,7 @@
-#include <asm-generic/errno-base.h>
-#include <asm-generic/errno.h>
 #include <errno.h>
 #include <stdatomic.h>
-#include <stdckdint.h>
 #include <stdio.h>
 #include <stdlib.h>
-#include <threads.h>
 #include <time.h>
 
 #include "cpu.h"

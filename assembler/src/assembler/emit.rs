@@ -1,5 +1,3 @@
-use core::hash;
-
 use crate::{
     assembler::{Assembler, Instruction, Operand},
     encoding,
@@ -58,7 +56,7 @@ fn reg_transfer_byte(dest: GPRegister, src: GPRegister) -> u8 {
 fn imm_transfer_byte(dest: GPRegister, size: Size, sign_extended: bool) -> u8 {
     /*
      *                 Byte layout
-     *     bit:   7 6 5 4    3 2    1 0
+     *     bit:   7 6 5 4    3 2    1                       0
      * purpose:    dest  | size |  sign extended     | reserved (always 0)
      *
      * the `size` field tells the CPU how bytes to read and also the size of the register to place
@@ -215,13 +213,15 @@ impl Assembler {
                     let expr = std::mem::replace(&mut instruction.exprs[1], None);
                     // Emit the relocation
                     self.emit_relocation(instruction.reloc[1], offset, expr.unwrap());
-                } 
+                }
 
                 if instruction.types[1].intersects(OperandFlags::IMM64) {
                     let transfer_byte = imm_transfer_byte(dest.try_into()?, Size::U64, false);
                     self.get_section().write_u8(transfer_byte);
 
                     self.get_section().write_u64(src);
+                } else {
+                    todo!("Other sized types")
                 }
             } else if instruction.types[1].intersects(OperandFlags::ADDR) {
                 let dest = instruction.operands[0].register();
@@ -305,6 +305,28 @@ impl Assembler {
                     unreachable!("Invalid instruction template")
                 }
             }
+        } else if options.intersects(encoding!(JMP)) {
+            let disp = instruction.operands[0].constant();
+            let offset = if instruction.reloc[0] == Relocation::None {
+                // Where the program counter will be when this instruction is executed
+                let pc: u64 = (self.get_section().cursor() + 4).try_into().unwrap();
+                let offset = calculate_disp32_offset(pc, disp)?;
+                debug!(
+                    "Calculated offset {:#x} to {}+{:#x}",
+                    offset,
+                    self.get_section().name,
+                    pc as i64 + offset as i64
+                );
+                offset
+            } else {
+                // `expr` should always be Some
+                let expr = std::mem::replace(&mut instruction.exprs[0], None).unwrap();
+                let cursor = self.get_section().cursor();
+                self.emit_relocation(instruction.reloc[0], cursor, expr);
+                0
+            };
+
+            self.get_section().write_u32(offset as u32);
         } else {
             panic!("Invalid instruction")
         }

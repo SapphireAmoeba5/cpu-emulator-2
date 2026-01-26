@@ -4,6 +4,15 @@
 #include <stdint.h>
 #include <stdbool.h>
 
+#define BIT(n) 1 << (n)
+
+typedef uint16_t flags_t ;
+
+constexpr flags_t FLAG_ZERO = BIT(0);
+constexpr flags_t FLAG_CARRY = BIT(1);
+constexpr flags_t FLAG_OVERFLOW = BIT(2);
+constexpr flags_t FLAG_SIGN = BIT(3);
+
 // Number of instructions to read ahead
 constexpr uint64_t N = 50;
 // Size of the instruction buffer in uin64_t's. Add's one to account for alignment when populating the instruction buffer
@@ -26,8 +35,13 @@ typedef struct Cpu {
     // Instruction and stack pointer
     uint64_t ip;
     uint64_t sp;
+
+    // If the CPU is halted
     bool halt;
+    // If the CPU should delete itself
     bool exit;
+    // CPU flags
+    flags_t flags;
 
     // Stores N instructions. Updated when IP leaves the bounds that were cached
     uint64_t cached_address;

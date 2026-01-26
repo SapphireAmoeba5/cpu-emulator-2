@@ -30,5 +30,7 @@ pub enum Mnemonic {
     And,
     Or,
     Xor,
+    Jmp,
+    Jnz,
     Int,
 }
