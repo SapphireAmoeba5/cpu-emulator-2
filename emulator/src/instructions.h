@@ -22,3 +22,4 @@ void str(Cpu* cpu, uint8_t instruction[16]);
 
 void jmp(Cpu* cpu, uint8_t instruction[16]);
 void jnz(Cpu* cpu, uint8_t instruction[16]);
+void jz(Cpu* cpu, uint8_t instruction[16]);

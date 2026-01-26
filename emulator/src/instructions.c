@@ -191,13 +191,13 @@ void intpt(Cpu* cpu, uint8_t instruction[16]) {
     uint8_t index = instruction[1];
 
     if (index == 0x80) {
-        printf("Cycle: %lu\n", cpu->clock_count);
-        for (int i = 0; i < 32; i++) {
+        printf("Cycle: %llu\n", cpu->clock_count);
+        for (int i = 0; i < 16; i++) {
             uint64_t value = cpu->registers[i].r;
-            printf("r%lu = %016lx (%ld)\n", (uint64_t)i, value, (int64_t)value);
+            printf("r%llu = %016llx (%lld)\n", (uint64_t)i, value, (int64_t)value);
         }
 
-        printf("ip: %lu/%lu\nsp: %lu\n", cpu->ip,
+        printf("ip: %llu/%lu\nsp: %llu\n", cpu->ip,
                memory_size_bytes(cpu->memory), cpu->sp);
 
         printf("%b\n", cpu->flags);
@@ -387,20 +387,7 @@ void mov_mem(Cpu* cpu, uint8_t instruction[16]) {
     }
     }
 
-    switch (size) {
-    case 0:
-        cpu->registers[dest].b = value;
-        break;
-    case 1:
-        cpu->registers[dest].s = value;
-        break;
-    case 2:
-        cpu->registers[dest].w = value;
-        break;
-    case 3:
-        cpu->registers[dest].r = value;
-        break;
-    }
+    cpu->registers[dest].r = value;
 }
 
 void mov_imm(Cpu* cpu, uint8_t instruction[16]) {
@@ -411,40 +398,10 @@ void mov_imm(Cpu* cpu, uint8_t instruction[16]) {
     parse_imm_transfer_byte(instruction[1], &dest, &size, &sign_extend);
     cpu->ip += 1 << size;
     uint64_t value = 0;
+    // WARNING: Only works on little endian systems
     memcpy(&value, &instruction[2], 1 << size);
-    switch (size) {
-    case 0: {
-        if (sign_extend) {
-            value = (int64_t)((int8_t)value);
-            cpu->registers[dest].r = value;
-        } else {
-            cpu->registers[dest].b = value;
-        }
-        break;
-    }
-    case 1: {
-        if (sign_extend) {
-            value = (int64_t)((int16_t)value);
-            cpu->registers[dest].r = value;
-        } else {
-            cpu->registers[dest].s = value;
-        }
-        break;
-    }
-    case 2: {
-        if (sign_extend) {
-            value = (int64_t)((int32_t)value);
-            cpu->registers[dest].r = value;
-        } else {
-            cpu->registers[dest].w = value;
-        }
-        break;
-    }
-    case 3: {
-        cpu->registers[dest].r = value;
-        break;
-    }
-    }
+
+    cpu->registers[dest].r = value;
 }
 
 void sub_reg(Cpu* cpu, uint8_t instruction[16]) {
@@ -453,28 +410,31 @@ void sub_reg(Cpu* cpu, uint8_t instruction[16]) {
     uint8_t dest;
     uint8_t src;
     parse_reg_transfer_byte(transfer_byte, &dest, &src);
+
     uint64_t left = cpu->registers[dest].r;
     uint64_t right = cpu->registers[src].r;
-    uint64_t difference;
+    uint64_t difference = left - right;
+
+    uint64_t tmp;
+    bool carry = __builtin_sub_overflow(left, right, &tmp);
+    bool overflow = __builtin_sub_overflow((int64_t)left, (int64_t)right, (int64_t*)&tmp);
+    bool zero = difference == 0;
+    bool sign = (int64_t)difference < 0;
 
     cpu->flags &= ~(FLAG_ZERO | FLAG_CARRY | FLAG_OVERFLOW | FLAG_SIGN);
-
-    if(__builtin_sub_overflow(left, right, &difference)) {
+    if(carry) {
         cpu->flags |= FLAG_CARRY;
     }
-
-    int64_t tmp;
-    if(__builtin_sub_overflow((int64_t)left, (int64_t)right, &tmp)) {
+    if(overflow) {
         cpu->flags |= FLAG_OVERFLOW;
     }
-
-
-    if(difference == 0) {
+    if(zero) {
         cpu->flags |= FLAG_ZERO;
     }
-    if((int64_t)difference < 0) {
+    if(sign) {
         cpu->flags |= FLAG_SIGN;
     }
+
 
     cpu->registers[dest].r = difference;
 }
@@ -482,6 +442,42 @@ void sub_mem(Cpu* cpu, uint8_t instruction[16]) {
 
 }
 void sub_imm(Cpu* cpu, uint8_t instruction[16]) {
+    cpu->ip += 2;
+    uint8_t dest;
+    int size;
+    bool sign_extend;
+    parse_imm_transfer_byte(instruction[1], &dest, &size, &sign_extend);
+    cpu->ip += 1 << size;
+    uint64_t right = 0;
+    // WARNING: Only works on little endian systems
+    memcpy(&right, &instruction[2], 1 << size);
+
+    uint64_t left = cpu->registers[dest].r;
+
+    uint64_t difference = left - right;
+
+    uint64_t tmp;
+    bool carry = __builtin_sub_overflow(left, right, &tmp);
+    bool overflow = __builtin_sub_overflow((int64_t)left, (int64_t)right, (int64_t*)&tmp);
+    bool zero = difference == 0;
+    bool sign = (int64_t)difference < 0;
+
+    cpu->flags &= ~(FLAG_ZERO | FLAG_CARRY | FLAG_OVERFLOW | FLAG_SIGN);
+    if(carry) {
+        cpu->flags |= FLAG_CARRY;
+    }
+    if(overflow) {
+        cpu->flags |= FLAG_OVERFLOW;
+    }
+    if(zero) {
+        cpu->flags |= FLAG_ZERO;
+    }
+    if(sign) {
+        cpu->flags |= FLAG_SIGN;
+    }
+
+    // TODO: Sign extend
+    cpu->registers[dest].r = difference;
 
 }
 
@@ -541,6 +537,15 @@ void jmp(Cpu* cpu, uint8_t instruction[16]) {
 void jnz(Cpu* cpu, uint8_t instruction[16]) {
     cpu->ip += 5;
     if((cpu->flags & FLAG_ZERO) == 0) {
+        int32_t offset;
+        memcpy(&offset, &instruction[1], sizeof(offset));
+        cpu->ip += (int64_t)offset;
+    }
+}
+
+void jz(Cpu* cpu, uint8_t instruction[16]) {
+    cpu->ip += 5;
+    if(cpu->flags & FLAG_ZERO) {
         int32_t offset;
         memcpy(&offset, &instruction[1], sizeof(offset));
         cpu->ip += (int64_t)offset;

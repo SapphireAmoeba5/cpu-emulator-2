@@ -213,15 +213,26 @@ impl Assembler {
                     let expr = std::mem::replace(&mut instruction.exprs[1], None);
                     // Emit the relocation
                     self.emit_relocation(instruction.reloc[1], offset, expr.unwrap());
-                }
+                } else {
+                    let constant_size: Size = if src <= u8::MAX.into() {
+                        Size::U8
+                    } else if src <= u16::MAX.into() {
+                        Size::U16
+                    } else if src <= u32::MAX.into() {
+                        Size::U32
+                    } else {
+                        Size::U64
+                    };
 
-                if instruction.types[1].intersects(OperandFlags::IMM64) {
-                    let transfer_byte = imm_transfer_byte(dest.try_into()?, Size::U64, false);
+                    let transfer_byte = imm_transfer_byte(dest.try_into()?, constant_size, false);
                     self.get_section().write_u8(transfer_byte);
 
-                    self.get_section().write_u64(src);
-                } else {
-                    todo!("Other sized types")
+                    match constant_size {
+                        Size::U8 => self.get_section().write_u8(src as u8),
+                        Size::U16 => self.get_section().write_u16(src as u16),
+                        Size::U32 => self.get_section().write_u32(src as u32),
+                        Size::U64 => self.get_section().write_u64(src),
+                    }
                 }
             } else if instruction.types[1].intersects(OperandFlags::ADDR) {
                 let dest = instruction.operands[0].register();
