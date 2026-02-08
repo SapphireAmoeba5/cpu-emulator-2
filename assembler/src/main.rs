@@ -92,5 +92,7 @@ fn main() -> ExitCode {
         return ExitCode::FAILURE;
     }
 
+    println!("Wrote {} bytes", program.linked.len());
+
     return ExitCode::SUCCESS;
 }

@@ -4,7 +4,7 @@ use crate::{
 };
 use anyhow::{Context, Result, anyhow};
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, Eq, PartialEq)]
 pub enum BinaryOp {
     Add,
     Sub,
@@ -23,7 +23,7 @@ impl BinaryOp {
     }
 
     /// Convienence function that will automatically perform the operation on `lhs` and `rhs` with
-    /// wrapping semantics 
+    /// wrapping semantics
     pub fn calculate(&self, lhs: u64, rhs: u64) -> u64 {
         match self {
             BinaryOp::Add => lhs.wrapping_add(rhs),
@@ -131,15 +131,13 @@ fn parse_constant(tokens: &mut TokenIter) -> Result<Box<Node>> {
                 _ => return Err(anyhow!("Expected closing brace")),
             }
         }
-        unary_op => {
-            match UnaryOp::try_from(unary_op) {
-                Ok(op) => Node::UnaryOp {
-                    op,
-                    expr: parse_constant(tokens)?,
-                },
-                _ => return Err(anyhow!("Invalid token while parsing expression")),
-            }
-        }
+        unary_op => match UnaryOp::try_from(unary_op) {
+            Ok(op) => Node::UnaryOp {
+                op,
+                expr: parse_constant(tokens)?,
+            },
+            _ => return Err(anyhow!("Invalid token while parsing expression")),
+        },
     };
     Ok(Box::new(node))
 }

@@ -1,6 +1,6 @@
 use crate::{
     assembler::{Assembler, Instruction, Operand},
-    encoding,
+    bit, encoding,
     opcode::{EncodingFlags, OperandFlags, Relocation},
     operand,
     section::Section,
@@ -8,6 +8,10 @@ use crate::{
 };
 use anyhow::{Context, Result, anyhow};
 use spdlog::debug;
+use std::{
+    mem::{self, size_of},
+    ops::Index,
+};
 
 struct GPRegister(u8);
 
@@ -44,6 +48,18 @@ enum Size {
     U64 = 3,
 }
 
+impl From<Relocation> for Size {
+    fn from(value: Relocation) -> Self {
+        match value {
+            Relocation::Abs8 | Relocation::PC8 => Size::U8,
+            Relocation::Abs16 => Size::U16,
+            Relocation::Abs32 | Relocation::PC32 => Size::U32,
+            Relocation::Abs64 | Relocation::PC64 | Relocation::Addr64 => Size::U64,
+            Relocation::None => unreachable!("This shouldn't be reached"),
+        }
+    }
+}
+
 fn reg_transfer_byte(dest: GPRegister, src: GPRegister) -> u8 {
     /*
      *  reg/reg transfer byte encoding
@@ -53,17 +69,16 @@ fn reg_transfer_byte(dest: GPRegister, src: GPRegister) -> u8 {
     dest.get_gp() << 4 | src.get_gp()
 }
 
-fn imm_transfer_byte(dest: GPRegister, size: Size, sign_extended: bool) -> u8 {
+fn imm_transfer_byte(dest: GPRegister, size: Size) -> u8 {
     /*
      *                 Byte layout
-     *     bit:   7 6 5 4    3 2    1                       0
-     * purpose:    dest  | size |  sign extended     | reserved (always 0)
+     *     bit:   7 6 5 4    3 2    1  0
+     * purpose:    dest  | size | reserved (always 0)
      *
-     * the `size` field tells the CPU how bytes to read and also the size of the register to place
-     * the value in
+     * the `size` field tells the CPU how bytes to read for the immediate
      */
 
-    dest.get_gp() << 4 | (size as u8) << 2 | (sign_extended as u8) << 1
+    dest.get_gp() << 4 | (size as u8) << 2
 }
 
 // The mem transfer byte encoding layout
@@ -75,7 +90,7 @@ fn imm_transfer_byte(dest: GPRegister, size: Size, sign_extended: bool) -> u8 {
  * Values for `addr mode`
  *   0b00 | PC rel disp32
  *   0b01 | SP + Index * scale
- *   0b10 | Base + Index * scale
+ *   0b10 | Base + Index * scale (BIS)
  *   0b11 | Immediate address
  */
 
@@ -93,6 +108,44 @@ fn base_index_transfer_byte(dest: GPRegister, size: Size) -> u8 {
 
 fn const_addr_transfer_byte(dest: GPRegister, size: Size) -> u8 {
     dest.get_gp() << 4 | 0b11 << 2 | (size as u8)
+}
+
+/// Creates the memory index byte used in normal Base + Index * Scale + Displacement,
+/// and SP + Index * Scale + Displacement addressing.
+///
+/// `base_or_index` have different meaning based on if this byte is
+/// using the BIS addressing mode, or SP rel addressing mode respectively.
+///
+/// `disp_width` determines if the displacement is 4bytes or 2bytes. false if four bytes, true if
+/// 2bytes
+///
+/// if `ignore` is set to true then that means to ignore the register encoded within this byte.
+/// For BIS addressing it means there is another byte that will encode both the base and index
+/// register, while for SP rel addressing it means there is no index register
+///
+/// if `ignore` is true then the value of `base_or_index` doesn't matter
+///
+/// This function will panic if any of the parameters are invalid
+///
+/// `base_or_index` must be a general purpose register, or if `ignore` is true then
+/// it can be invalid
+///
+/// `scale` must be less than or equal to 3
+fn memory_index_byte(base_or_index: Register, scale: u8, disp_width: bool, ignore: bool) -> u8 {
+    // Scale must be between these two values
+    debug_assert!(scale <= 3);
+
+    // TODO: Update documentation for this function
+
+    let reg_byte = if !ignore {
+        base_or_index
+            .get_gp()
+            .expect("Register must be a general purpose register")
+    } else {
+        0
+    };
+
+    reg_byte << 4 | scale << 2 | (disp_width as u8) << 1 | (ignore as u8)
 }
 
 fn immediate_fits(src: u64, options: OperandFlags) -> bool {
@@ -146,7 +199,7 @@ fn get_memory_access_size(flags: EncodingFlags) -> Size {
     } else if flags.intersects(EncodingFlags::MEM8) {
         Size::U8
     } else {
-        unreachable!()
+        unreachable!("Unknown memory access size")
     }
 }
 
@@ -206,15 +259,16 @@ impl Assembler {
                 let dest = instruction.operands[0].register();
                 let src = instruction.operands[1].constant();
 
-                if instruction.reloc[1] != Relocation::None {
+                let constant_size = if instruction.reloc[1] {
                     // Add plus one to the offset to account for the transfer byte we haven't
                     // written yet
                     let offset = self.get_section().cursor() + 1;
                     let expr = std::mem::replace(&mut instruction.exprs[1], None);
                     // Emit the relocation
-                    self.emit_relocation(instruction.reloc[1], offset, expr.unwrap());
+                    self.emit_relocation(Relocation::Abs64, offset, expr.unwrap());
+                    Size::U64
                 } else {
-                    let constant_size: Size = if src <= u8::MAX.into() {
+                    if src <= u8::MAX.into() {
                         Size::U8
                     } else if src <= u16::MAX.into() {
                         Size::U16
@@ -222,41 +276,30 @@ impl Assembler {
                         Size::U32
                     } else {
                         Size::U64
-                    };
-
-                    let transfer_byte = imm_transfer_byte(dest.try_into()?, constant_size, false);
-                    self.get_section().write_u8(transfer_byte);
-
-                    match constant_size {
-                        Size::U8 => self.get_section().write_u8(src as u8),
-                        Size::U16 => self.get_section().write_u16(src as u16),
-                        Size::U32 => self.get_section().write_u32(src as u32),
-                        Size::U64 => self.get_section().write_u64(src),
                     }
+                };
+
+                let transfer_byte = imm_transfer_byte(dest.try_into()?, constant_size);
+                self.get_section().write_u8(transfer_byte);
+
+                match constant_size {
+                    Size::U8 => self.get_section().write_u8(src as u8),
+                    Size::U16 => self.get_section().write_u16(src as u16),
+                    Size::U32 => self.get_section().write_u32(src as u32),
+                    Size::U64 => self.get_section().write_u64(src),
                 }
             } else if instruction.types[1].intersects(OperandFlags::ADDR) {
                 let dest = instruction.operands[0].register();
                 let src = instruction.operands[1].constant();
 
-                if instruction.reloc[1] != Relocation::None {
+                if instruction.reloc[1] {
                     // Add one to account for the transfer byte
                     let offset = self.get_section().cursor() + 1;
                     let expr = std::mem::replace(&mut instruction.exprs[1], None);
-                    self.emit_relocation(instruction.reloc[1], offset, expr.unwrap());
+                    self.emit_relocation(Relocation::Addr64, offset, expr.unwrap());
                 }
 
-                let size: Size;
-                if options.intersects(EncodingFlags::MEM64) {
-                    size = Size::U64;
-                } else if options.intersects(EncodingFlags::MEM32) {
-                    size = Size::U32;
-                } else if options.intersects(EncodingFlags::MEM16) {
-                    size = Size::U16;
-                } else if options.intersects(EncodingFlags::MEM8) {
-                    size = Size::U8;
-                } else {
-                    unreachable!("Unknown memory access size");
-                }
+                let size = get_memory_access_size(options);
 
                 let transfer_byte = const_addr_transfer_byte(dest.try_into()?, size);
 
@@ -271,9 +314,13 @@ impl Assembler {
 
                 self.get_section().write_u8(transfer_byte);
 
-                let offset = if instruction.reloc[1] == Relocation::None {
+                let offset = if !instruction.reloc[1] {
                     // Where the program counter will be when this instruction is executed
-                    let pc: u64 = (self.get_section().cursor() + 4).try_into().unwrap();
+                    // We add the size of an i32 because the displacement is encoded as a 4 byte
+                    // i32 integer
+                    let pc: u64 = (self.get_section().cursor() + size_of::<i32>())
+                        .try_into()
+                        .unwrap();
 
                     let offset = calculate_disp32_offset(pc, disp)?;
 
@@ -289,11 +336,157 @@ impl Assembler {
                     // `expr` should always be Some
                     let expr = std::mem::replace(&mut instruction.exprs[1], None).unwrap();
                     let cursor = self.get_section().cursor();
-                    self.emit_relocation(instruction.reloc[1], cursor, expr);
+                    self.emit_relocation(Relocation::PC32, cursor, expr);
                     0
                 };
 
                 self.get_section().write_u32(offset as u32);
+            } else if instruction.types[1].intersects(OperandFlags::INDEX) {
+                let dest = instruction.operands[0].register();
+                let mut memory_index = instruction.indexes[1];
+                let size = get_memory_access_size(options);
+
+                // Normalize the memory index because there are multiple representations of
+                // equivlant operations which is difficult to deal with later on
+                if memory_index.index.is_valid() && memory_index.base.is_invalid() {
+                    // For this we don't check if the scale is only one because if there is only an
+                    // index register with a scale then that is always representable the index
+                    // register is the instruction pointer
+                    memory_index.base = memory_index.index;
+                    memory_index.index = Register::none();
+                } else if memory_index.index.is_sp()
+                    && memory_index.base.is_gp()
+                    && memory_index.scale == 1
+                {
+                    // The index register cannot be the stack pointer but if the stack pointer is
+                    // the index and the scale is one then that's still valid
+                    let tmp = memory_index.base;
+                    memory_index.base = memory_index.index;
+                    memory_index.index = tmp;
+                }
+
+                let scale = match memory_index.scale {
+                    1 => 0,
+                    2 => 1,
+                    4 => 2,
+                    8 => 3,
+                    _ if memory_index.index.is_valid() => return Err(anyhow!("Invalid scale")),
+                    _ => 0,
+                };
+
+                debug!("{memory_index:#?}");
+
+                // TODO: Make new relocation type for sign extended values
+
+                // Stack pointer based addressing.
+                if memory_index.base.is_sp() {
+                    let trsnfr = sp_rel_transfer_byte(dest.try_into()?, size);
+                    self.get_section().write_u8(trsnfr);
+
+                    // We don't write this byte right after this statement because the 4byte/2byte
+                    // flag hasn't been set to the correct value until we figure out the minimum size of
+                    // the displacement
+                    let mut sp_byte: u8 = if memory_index.index.is_gp() {
+                        let byte = memory_index_byte(memory_index.index, scale, false, false);
+
+                        byte
+                    } else {
+                        if memory_index.index.is_valid() && !memory_index.index.is_gp() {
+                            return Err(anyhow!(
+                                "Index register must be a general purpose register"
+                            ));
+                        }
+                        let byte = memory_index_byte(Register::none(), scale, false, true);
+
+                        byte
+                    };
+
+                    if !instruction.reloc[1]
+                        && let Ok(disp) = i16::try_from(memory_index.disp as i64)
+                    {
+                        // We set this bit to one to signal to the CPU that this instruction has a
+                        // two byte displacement
+                        sp_byte |= bit!(1);
+                        self.get_section().write_u8(sp_byte);
+
+                        self.get_section().write_u16(disp as u16);
+                    } else if let Ok(disp) = i32::try_from(memory_index.disp as i64) {
+                        self.get_section().write_u8(sp_byte);
+                        if instruction.reloc[1] {
+                            let offset = self.get_section().cursor();
+                            let expr = mem::replace(&mut instruction.exprs[1], None);
+                            self.emit_relocation(
+                                Relocation::Abs32,
+                                offset,
+                                expr.expect("Expression should be some"),
+                            );
+                        }
+                        self.get_section().write_u32(disp as u32);
+                    } else {
+                        return Err(anyhow!("Displacement out of range"));
+                    }
+                } else if memory_index.base.is_valid() {
+                    let byte = base_index_transfer_byte(dest.try_into()?, size);
+                    self.get_section().write_u8(byte);
+
+                    let mut bis_byte = if memory_index.index.is_valid() {
+                        if memory_index.index.is_gp() {
+                            let byte = memory_index_byte(Register::none(), scale, false, true);
+                            byte
+                        } else {
+                            return Err(anyhow!(
+                                "Index register must be a general purpose register"
+                            ));
+                        }
+                    } else {
+                        if !memory_index.base.is_gp() {
+                            return Err(anyhow!("Invalid base register"));
+                        }
+                        let byte = memory_index_byte(memory_index.base, scale, false, false);
+                        byte
+                    };
+
+                    // This byte is only emitted if there is an index register
+                    let base_index_byte = memory_index.base.get_gp().unwrap_or(0) << 4
+                        | memory_index.index.get_gp().unwrap_or(0);
+
+                    if !instruction.reloc[1] && let Ok(disp) = i16::try_from(memory_index.disp as i64) {
+                        // We set this bit to one to signal to the CPU that this instruction has a
+                        // two byte displacement
+                        bis_byte |= bit!(1);
+                        self.get_section().write_u8(bis_byte);
+
+                        // We don't need to check if the register is a GP register because that
+                        // would have already been done later
+                        if memory_index.index.is_valid() {
+                            self.get_section().write_u8(base_index_byte);
+                        }
+
+                        self.get_section().write_u16(disp as u16);
+                    } else if let Ok(disp) = i32::try_from(memory_index.disp as i64) {
+                        self.get_section().write_u8(bis_byte);
+
+                        if memory_index.index.is_valid() {
+                            self.get_section().write_u8(base_index_byte);
+                        }
+
+                        if instruction.reloc[1] {
+                            let offset = self.get_section().cursor();
+                            let expr = mem::replace(&mut instruction.exprs[1], None);
+                            self.emit_relocation(
+                                Relocation::Abs32,
+                                offset,
+                                expr.expect("Expression should be some"),
+                            );
+                        }
+
+                        self.get_section().write_u32(disp as u32);
+                    } else {
+                        return Err(anyhow!("Displacement out of range"));
+                    }
+                } else if memory_index.base.is_invalid() && memory_index.index.is_invalid() {
+                    todo!("Constant addressing")
+                }
             } else {
                 unreachable!()
             }
@@ -305,10 +498,10 @@ impl Assembler {
                         .try_into()
                         .context("Constant too large to fit in one byte")?;
 
-                    if instruction.reloc[0] != Relocation::None {
+                    if instruction.reloc[0] {
                         let offset = self.get_section().cursor();
                         let expr = std::mem::replace(&mut instruction.exprs[0], None);
-                        self.emit_relocation(instruction.reloc[0], offset, expr.unwrap());
+                        self.emit_relocation(Relocation::Abs8, offset, expr.unwrap());
                     }
 
                     self.get_section().write_u8(byte);
@@ -318,7 +511,7 @@ impl Assembler {
             }
         } else if options.intersects(encoding!(JMP)) {
             let disp = instruction.operands[0].constant();
-            let offset = if instruction.reloc[0] == Relocation::None {
+            let offset = if !instruction.reloc[0] {
                 // Where the program counter will be when this instruction is executed
                 let pc: u64 = (self.get_section().cursor() + 4).try_into().unwrap();
                 let offset = calculate_disp32_offset(pc, disp)?;
@@ -333,7 +526,7 @@ impl Assembler {
                 // `expr` should always be Some
                 let expr = std::mem::replace(&mut instruction.exprs[0], None).unwrap();
                 let cursor = self.get_section().cursor();
-                self.emit_relocation(instruction.reloc[0], cursor, expr);
+                self.emit_relocation(Relocation::PC32, cursor, expr);
                 0
             };
 

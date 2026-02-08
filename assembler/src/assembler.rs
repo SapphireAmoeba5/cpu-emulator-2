@@ -6,13 +6,14 @@ use bitflags::Flag;
 use itertools::izip;
 
 use std::collections::HashMap;
-use std::usize;
+use std::panic::resume_unwind;
+use std::{mem, usize};
 
 use anyhow::anyhow;
 use spdlog::debug;
 
 use crate::assembler::symbol_table::{SymbolTable, Type};
-use crate::expression::{Mode, Node, parse_expr};
+use crate::expression::{BinaryOp, Mode, Node, parse_expr};
 use crate::instruction::Mnemonic;
 use crate::opcode::{
     EncodingFlags, InstEncoding, MAX_OPERANDS, OperandFlags, Relocation, get_encodings,
@@ -51,10 +52,91 @@ fn get_operand_from_expr_result(result: ExprResult) -> (Operand, OperandFlags) {
 }
 
 #[derive(Debug, Copy, Clone)]
-enum Operand {
+pub enum Operand {
     None,
     Constant(u64),
     Register(Register),
+}
+
+/// The memory address is calculated as Base + (Index * scale) + displacement
+#[derive(Debug, Clone, Copy)]
+pub struct MemoryIndex {
+    /// The constant offset for the memory index
+    pub disp: u64,
+    /// The base register to use in the address calculation
+    pub base: Register,
+    /// The index register to use in the address calculation. If a register is supplied here, then
+    /// `base` must also be valid register too
+    pub index: Register,
+    /// Either 1, 2, 4, or 8. Multiplied with the index register
+    pub scale: u64,
+    /// If the displacement value is supposed to be a label
+    pub is_label: bool,
+}
+
+impl MemoryIndex {
+    /// Returns true if this memory index expression is just a register
+    pub fn is_register(&self) -> bool {
+        self.disp == 0
+            && self.base.is_valid()
+            && self.index.is_invalid()
+            && self.scale == 1
+            && self.is_label == false
+    }
+
+    /// Returns true if this memory index expression has a register component to it
+    pub fn has_register(&self) -> bool {
+        self.base.is_valid() || self.index.is_valid()
+    }
+
+    /// Returns tru of this memory index expression is just a number
+    pub fn is_number(&self) -> bool {
+        self.base.is_invalid() && self.index.is_invalid() && self.scale == 1
+    }
+}
+
+impl MemoryIndex {
+    pub fn disp(disp: u64) -> Self {
+        Self {
+            disp,
+            base: Register::none(),
+            index: Register::none(),
+            scale: 1,
+            is_label: false,
+        }
+    }
+
+    pub fn label(value: u64) -> Self {
+        Self {
+            disp: value,
+            base: Register::none(),
+            index: Register::none(),
+            scale: 1,
+            is_label: true,
+        }
+    }
+
+    pub fn register(register: Register) -> Self {
+        Self {
+            disp: 0,
+            base: register,
+            index: Register::none(),
+            scale: 1,
+            is_label: false,
+        }
+    }
+}
+
+impl Default for MemoryIndex {
+    fn default() -> Self {
+        Self {
+            disp: 0,
+            base: Register::none(),
+            index: Register::none(),
+            scale: 1,
+            is_label: false,
+        }
+    }
 }
 
 impl Operand {
@@ -88,8 +170,12 @@ struct Instruction {
     operands: [Operand; MAX_OPERANDS],
     /// The expression that produced each operand. Must contain `Some`
     exprs: [Option<Box<Node>>; MAX_OPERANDS],
-    /// Reloaction per operand
-    reloc: [Relocation; MAX_OPERANDS],
+    /// The memory indexing operations of this instruction
+    indexes: [MemoryIndex; MAX_OPERANDS],
+    /// Whether a relocation has been requested
+    reloc: [bool; MAX_OPERANDS],
+    // /// Reloaction per operand
+    // reloc: [Relocation; MAX_OPERANDS],
 }
 
 #[derive(Debug, Clone)]
@@ -360,6 +446,195 @@ impl Assembler {
         }
     }
 
+    /// Does not check if `scale` is valid
+    fn evaluate_memory_index(
+        &self,
+        expr: &Box<Node>,
+        current_section: usize,
+    ) -> Result<(MemoryIndex, bool)> {
+        let (index, relocation) = match &**expr {
+            Node::Constant(constant) => (MemoryIndex::disp(*constant), false),
+            Node::Register(register) => (MemoryIndex::register(*register), false),
+            Node::Identifier(identifier) => {
+                let Some(symbol) = self.symbols.get_symbol(&identifier) else {
+                    return Ok((MemoryIndex::disp(0), true));
+                };
+
+                if let Some(section_index) = symbol.section_index {
+                    if current_section == section_index {
+                        (MemoryIndex::label(symbol.value), false)
+                    } else {
+                        (MemoryIndex::label(0), true)
+                    }
+                } else {
+                    (MemoryIndex::disp(symbol.value), false)
+                }
+            }
+            Node::BinaryOp { op, left, right } => {
+                // We will do some normalization very shortly so it needs to be mutable
+                let mut op = *op;
+
+                let (mut left_result, left_relocation) =
+                    self.evaluate_memory_index(left, current_section)?;
+                let (mut right_result, right_relocation) =
+                    self.evaluate_memory_index(right, current_section)?;
+
+                let relocation = left_relocation | right_relocation;
+
+                // Normalize subtracting a constant displacement from a register value by negating
+                // the constant displacement and switching the operation into addition
+                if op == BinaryOp::Sub && left_result.has_register() && right_result.is_number() {
+                    op = BinaryOp::Add;
+                    right_result.disp = right_result.disp.wrapping_neg();
+                }
+
+                if left_result.is_number() && right_result.is_number() {
+                    let new_value = op.calculate(left_result.disp, right_result.disp);
+
+                    let mut index = MemoryIndex::disp(new_value);
+                    index.is_label = left_result.is_label | right_result.is_label;
+                    (index, relocation)
+                } else if op == BinaryOp::Add {
+                    left_result.disp = left_result.disp.wrapping_add(right_result.disp);
+
+                    if right_result.base.is_valid() {
+                        if left_result.base.is_invalid() {
+                            left_result.base = right_result.base;
+                        } else if left_result.index.is_invalid() {
+                            left_result.index = right_result.base;
+                        } else {
+                            return Err(anyhow!(
+                                "Attempting to add too many registers in index expression"
+                            ));
+                        }
+                    }
+                    if right_result.index.is_valid() {
+                        // We only check the left index and not the left base because if the code is proper, then once a
+                        // register goes into the index slot there isn't a reason it should go back
+                        // to the base
+                        if left_result.index.is_invalid() {
+                            left_result.index = right_result.index;
+                            left_result.scale = right_result.scale;
+                        } else {
+                            return Err(anyhow!(
+                                "Attempting to add too many registers in index expression"
+                            ));
+                        }
+                    }
+
+                    left_result.is_label |= right_result.is_label;
+
+                    (left_result, relocation)
+                } else if op == BinaryOp::Mul {
+                    if left_result.is_label || right_result.is_label {
+                        return Err(anyhow!("Cannot use label as scalar"));
+                    }
+
+                    if relocation {
+                        return Err(anyhow!("Cannot relocate a scalar value"));
+                    }
+
+                    let (scale, index) = if left_result.disp != 0 && right_result.disp == 0 {
+                        // The left result is the scalar, it cannot have any registers associated
+                        // with it
+                        if left_result.base.is_valid() || left_result.index.is_valid() {
+                            return Err(anyhow!("Invalid memory index expression"));
+                        }
+                        // The right result can't have both registers associated with it, just one
+                        if right_result.base.is_valid() && right_result.index.is_valid() {
+                            return Err(anyhow!("Invalid memory index expression"));
+                        }
+
+                        if right_result.base.is_valid() {
+                            (left_result.disp, right_result.base)
+                        } else {
+                            let right_scale: u64 = right_result.scale.into();
+                            (left_result.disp * right_scale, right_result.index)
+                        }
+                    } else if right_result.disp != 0 && left_result.disp == 0 {
+                        if right_result.base.is_valid() || right_result.index.is_valid() {
+                            return Err(anyhow!("Invalid memory index expression"));
+                        } else if left_result.base.is_valid() && left_result.index.is_valid() {
+                            return Err(anyhow!("Invalid memory index expression"));
+                        }
+
+                        if left_result.base.is_valid() {
+                            (right_result.disp, left_result.base)
+                        } else {
+                            let left_scale: u64 = left_result.scale.into();
+                            (right_result.disp * left_scale, left_result.index)
+                        }
+                    } else {
+                        return Err(anyhow!("Invalid memory index expression"));
+                    };
+
+                    let index = MemoryIndex {
+                        disp: 0,
+                        base: Register::none(),
+                        index,
+                        scale,
+                        is_label: false,
+                    };
+
+                    (index, false)
+                } else if op == BinaryOp::Div {
+                    if relocation {
+                        return Err(anyhow!("Cannot relocate a scalar value"));
+                    }
+
+                    if left_result.is_label | right_result.is_label {
+                        return Err(anyhow!("Cannot use label as a scalar value"));
+                    }
+                    if right_result.base.is_valid() || right_result.index.is_valid() {
+                        return Err(anyhow!("Cannot divide by a register value"));
+                    }
+
+                    if left_result.base.is_valid() && left_result.index.is_valid() {
+                        return Err(anyhow!("Invalid memory index expression"));
+                    }
+
+                    if right_result.disp == 0 {
+                        return Err(anyhow!("Cannot divide by 0"));
+                    }
+
+                    let (scale, index) = if left_result.base.is_valid() {
+                        (1 / right_result.disp, left_result.base)
+                    } else {
+                        (left_result.scale / right_result.disp, left_result.index)
+                    };
+
+                    let index = MemoryIndex {
+                        disp: 0,
+                        base: Register::none(),
+                        index,
+                        scale,
+                        is_label: false,
+                    };
+
+                    (index, false)
+                } else {
+                    return Err(anyhow!("Invalid memory index expression"));
+                }
+            }
+            Node::UnaryOp { op, expr } => {
+                let (mut result, relocation) = self.evaluate_memory_index(expr, current_section)?;
+
+                if result.base.is_valid() || result.index.is_valid() {
+                    return Err(anyhow!("Cannot perform unary op on a register value"));
+                }
+
+                let value = op.calculate(result.disp);
+                result.disp = value;
+
+                (result, relocation)
+            }
+            Node::Expression(expr) => self.evaluate_memory_index(expr, current_section)?,
+            _ => todo!(),
+        };
+
+        Ok((index, relocation))
+    }
+
     pub fn emit_relocation(&mut self, relocation: Relocation, offset: usize, expr: Box<Node>) {
         let section = self.current_section.unwrap();
         let name: &str = relocation.into();
@@ -472,6 +747,7 @@ impl Assembler {
         let encodings = get_encodings(*instruction);
 
         let mut operands = [Operand::None; MAX_OPERANDS];
+        let mut index_addresses = [MemoryIndex::default(); MAX_OPERANDS];
         let mut reloc_needed = [false; MAX_OPERANDS];
         let mut types = [OperandFlags::empty(); MAX_OPERANDS];
 
@@ -483,6 +759,7 @@ impl Assembler {
             &mut operands,
             &mut reloc_needed,
             &mut types,
+            &mut index_addresses,
             &mut operand_exprs,
         )?;
 
@@ -499,12 +776,11 @@ impl Assembler {
             let mut matches = true;
             // Iterate over the current instruction's operands and the instruction encoding's
             // operands to determine if they all match
-            for (encoding_type, operand_type) in
-                izip!(&encoding.operands, &types).take(operand_count)
+            for (encoding_type, type_) in izip!(&encoding.operands, &mut types).take(operand_count)
             {
                 // Set matches to false an break from the loop if the two instruction types don't
                 // match
-                if !encoding_type.intersects(*operand_type) {
+                if !encoding_type.intersects(*type_) {
                     matches = false;
                     break;
                 }
@@ -512,10 +788,10 @@ impl Assembler {
 
             // We found the right instruction encoding
             if matches {
-                for (type_, encoding_operands) in
+                for (type_, encoding_type) in
                     izip!(&mut types, &encoding.operands).take(operand_count)
                 {
-                    *type_ &= *encoding_operands;
+                    *type_ &= *encoding_type;
                     // There should only be one type set
                     assert_eq!(
                         type_.bits().count_ones(),
@@ -538,49 +814,53 @@ impl Assembler {
             self.filename, self.current_line
         );
 
-        let mut instr_relocs = [Relocation::None; MAX_OPERANDS];
+        // let mut instr_relocs = [Relocation::None; MAX_OPERANDS];
 
-        for (reloc_needed, type_, reloc) in
-            izip!(&reloc_needed, &types, &mut instr_relocs).take(operand_count)
-        {
-            if *reloc_needed {
-                // Figure out which relocation type we need
-                if type_.intersects(operand!(IMM)) {
-                    if type_.intersects(operand!(IMM8)) {
-                        *reloc = Relocation::Abs8;
-                    } else if type_.intersects(operand!(IMM32)) {
-                        *reloc = Relocation::Abs32;
-                    } else if type_.intersects(operand!(IMM64)) {
-                        *reloc = Relocation::Abs64;
-                    } else {
-                        unreachable!();
-                    }
-                } else if type_.intersects(operand!(DISP)) {
-                    if type_.intersects(operand!(DISP32)) {
-                        *reloc = Relocation::PC32;
-                    } else {
-                        unreachable!();
-                    }
-                } else if type_.intersects(operand!(ADDR)) {
-                    if type_.intersects(operand!(ADDR64)) {
-                        *reloc = Relocation::Addr64;
-                    } else {
-                        unreachable!();
-                    }
-                } 
-                else {
-                    unreachable!("No other operand flag should need a relocation");
-                }
-            }
-        }
+        // for (i, (reloc_needed, type_, reloc)) in
+        //     izip!(&reloc_needed, &types, &mut instr_relocs).take(operand_count).enumerate()
+        // {
+        //     if *reloc_needed {
+        //         // Figure out which relocation type we need
+        //         if type_.intersects(operand!(IMM)) {
+        //             if type_.intersects(operand!(IMM8)) {
+        //                 *reloc = Relocation::Abs8;
+        //             } else if type_.intersects(operand!(IMM32)) {
+        //                 *reloc = Relocation::Abs32;
+        //             } else if type_.intersects(operand!(IMM64)) {
+        //                 *reloc = Relocation::Abs64;
+        //             } else {
+        //                 unreachable!();
+        //             }
+        //         } else if type_.intersects(operand!(DISP)) {
+        //             if type_.intersects(operand!(DISP32)) {
+        //                 *reloc = Relocation::PC32;
+        //             } else {
+        //                 unreachable!();
+        //             }
+        //         } else if type_.intersects(operand!(ADDR)) {
+        //             if type_.intersects(operand!(ADDR64)) {
+        //                 *reloc = Relocation::Addr64;
+        //             } else {
+        //                 unreachable!();
+        //             }
+        //         } else if type_.intersects(OperandFlags::INDEX) {
+        //             if index_addresses[i].is_label {
+        //                 *reloc_needed = Relocation::PC32;
+        //             }         
+        //         } else {
+        //             unreachable!("No other operand flag should need a relocation");
+        //         }
+        //     }
+        // }
 
         let instruction = Instruction {
             encoding,
             operand_count,
+            indexes: index_addresses,
             types,
             operands,
             exprs: operand_exprs,
-            reloc: instr_relocs,
+            reloc: reloc_needed,
         };
 
         let _ = self.emit_instruction(instruction)?;
@@ -594,6 +874,7 @@ impl Assembler {
         operands: &mut [Operand; MAX_OPERANDS],
         reloc_needed: &mut [bool; MAX_OPERANDS],
         types: &mut [OperandFlags; MAX_OPERANDS],
+        index_addresses: &mut [MemoryIndex; MAX_OPERANDS],
         operand_exprs: &mut [Option<Box<Node>>; MAX_OPERANDS],
     ) -> Result<usize> {
         assert!(
@@ -618,73 +899,111 @@ impl Assembler {
                     return Err(anyhow!("Expected comma"));
                 }
             } else {
-                #[derive(Debug, Eq, PartialEq)]
-                enum FlagOverride {
-                    None,
-                    /// Always set the flags associated with immediate values
-                    Constant,
-                    /// Always set every flags associated with reading from memory
-                    Memory,
-                    /// Always set the flags associated with hardcoded addresses
-                    Addr,
-                    /// Always set the flags associated with reading from memory with PC relative
-                    /// displacements
-                    Offset,
-                }
-
                 expecting_comma = true;
                 let current_section = self.get_section_index()?;
 
-                let flag_override = match tokens.peek()? {
-                    Some(Token::Dollar) => {
-                        let _ = tokens.next();
-                        FlagOverride::Constant
-                    }
-                    Some(Token::Mul) => {
-                        let _ = tokens.next();
-                        FlagOverride::Memory
-                    }
-                    Some(Token::AtSign) => {
-                        let _ = tokens.next();
-                        FlagOverride::Addr
-                    }
-                    Some(Token::Ampersand) => {
-                        let _ = tokens.next();
-                        FlagOverride::Offset
-                    }
-                    _ => FlagOverride::None,
-                };
+                // The operand is a memory index, otherwise it's an expression/register
+                if matches!(tokens.peek()?.context("Expected token")?, Token::LSqrBrace) {
+                    let _ = tokens.next();
+                    let expr = parse_expr(tokens)?;
 
-                let expr = parse_expr(tokens)?;
-                let result = self.evaluate_expression(&expr, current_section)?;
+                    if !matches!(
+                        tokens.next()?.context("Expected closing square bracket")?,
+                        Token::RSqrBrace
+                    ) {
+                        return Err(anyhow!("Expected closing square bracket"));
+                    }
 
-                if let Some(operand) = operands.get_mut(num_operands)
-                    && let Some(reloc_needed) = reloc_needed.get_mut(num_operands)
-                    && let Some(op_type) = types.get_mut(num_operands)
-                    && let Some(operand_expr) = operand_exprs.get_mut(num_operands)
-                {
-                    *operand_expr = Some(expr);
-                    num_operands += 1;
-                    *reloc_needed = result.relocation;
+                    // This function doesn't check if the scalar value is valid, and we won't
+                    // either. The emit function will check it.
+                    let (index, relocation) = self.evaluate_memory_index(&expr, current_section)?;
 
-                    if !matches!(flag_override, FlagOverride::None)
-                        && matches!(result.type_, ExprType::Register)
+                    if let Some(memory_index) = index_addresses.get_mut(num_operands)
+                        && let Some(reloc_needed) = reloc_needed.get_mut(num_operands)
+                        && let Some(op_type) = types.get_mut(num_operands)
+                        && let Some(operand_expr) = operand_exprs.get_mut(num_operands)
                     {
-                        return Err(anyhow!(
-                            "Cannont use operand type specifiers with registers"
-                        ));
+                        num_operands += 1;
+                        *memory_index = index;
+                        *reloc_needed = relocation;
+                        *op_type = OperandFlags::INDEX;
+                        *operand_expr = Some(expr);
+                    } else {
+                        return Err(anyhow!("Too many operands. Max is {MAX_OPERANDS}"));
+                    }
+                } else {
+                    #[derive(Debug, Eq, PartialEq)]
+                    enum FlagOverride {
+                        None,
+                        /// Always set the flags associated with immediate values
+                        Constant,
+                        /// Always set every flags associated with reading from memory
+                        Memory,
+                        /// Always set the flags associated with hardcoded addresses
+                        Addr,
+                        /// Always set the flags associated with reading from memory with PC relative
+                        /// displacements
+                        Offset,
                     }
 
-                    (*operand, *op_type) = match flag_override {
-                        FlagOverride::None => get_operand_from_expr_result(result),
-                        FlagOverride::Constant => (Operand::Constant(result.immediate), operand!(IMM)),
-                        FlagOverride::Memory => (Operand::Constant(result.immediate), operand!(ADDR | DISP)),
-                        FlagOverride::Addr => (Operand::Constant(result.immediate), operand!(ADDR)),
-                        FlagOverride::Offset => (Operand::Constant(result.immediate), operand!(DISP)),
-                        
+                    let flag_override = match tokens.peek()? {
+                        Some(Token::Dollar) => {
+                            let _ = tokens.next();
+                            FlagOverride::Constant
+                        }
+                        Some(Token::Mul) => {
+                            let _ = tokens.next();
+                            FlagOverride::Memory
+                        }
+                        Some(Token::AtSign) => {
+                            let _ = tokens.next();
+                            FlagOverride::Addr
+                        }
+                        Some(Token::Ampersand) => {
+                            let _ = tokens.next();
+                            FlagOverride::Offset
+                        }
+                        _ => FlagOverride::None,
                     };
-                } else {
-                    return Err(anyhow!("Too many operands. Max is {MAX_OPERANDS}"));
+
+                    let expr = parse_expr(tokens)?;
+                    let result = self.evaluate_expression(&expr, current_section)?;
+
+                    if let Some(operand) = operands.get_mut(num_operands)
+                        && let Some(reloc_needed) = reloc_needed.get_mut(num_operands)
+                        && let Some(op_type) = types.get_mut(num_operands)
+                        && let Some(operand_expr) = operand_exprs.get_mut(num_operands)
+                    {
+                        *operand_expr = Some(expr);
+                        num_operands += 1;
+                        *reloc_needed = result.relocation;
+
+                        if !matches!(flag_override, FlagOverride::None)
+                            && matches!(result.type_, ExprType::Register)
+                        {
+                            return Err(anyhow!(
+                                "Cannont use operand type specifiers with registers"
+                            ));
+                        }
+
+                        (*operand, *op_type) = match flag_override {
+                            FlagOverride::None => get_operand_from_expr_result(result),
+                            FlagOverride::Constant => {
+                                (Operand::Constant(result.immediate), operand!(IMM))
+                            }
+                            FlagOverride::Memory => {
+                                (Operand::Constant(result.immediate), operand!(ADDR | DISP))
+                            }
+                            FlagOverride::Addr => {
+                                (Operand::Constant(result.immediate), operand!(ADDR))
+                            }
+                            FlagOverride::Offset => {
+                                (Operand::Constant(result.immediate), operand!(DISP))
+                            }
+                        };
+                    } else {
+                        return Err(anyhow!("Too many operands. Max is {MAX_OPERANDS}"));
+                    }
                 }
             }
         }
@@ -740,7 +1059,8 @@ impl Assembler {
         }
 
         tokens.newline_or_eof()?;
-        self.symbols.insert_symbol(name, value.immediate, Type::Constant, None)
+        self.symbols
+            .insert_symbol(name, value.immediate, Type::Constant, None)
     }
 }
 
@@ -765,4 +1085,61 @@ mod tests {
 
     #[test]
     fn test_something() {}
+
+    #[test]
+    fn test_memory_index() {
+        let mut assembler = default_assembler();
+
+        let source = SourceCode::new("100".to_string());
+        let mut tokens = source.tokens();
+        let expr = parse_expr(&mut tokens).expect("Expression should be valid");
+        let (index, relocation) = assembler
+            .evaluate_memory_index(&expr, Assembler::NO_SECTION)
+            .expect("Memory index should be valid");
+        assert_eq!(relocation, false);
+        assert_eq!(index.disp, 100);
+        assert!(index.base.is_invalid());
+        assert!(index.index.is_invalid());
+        assert!(index.scale == 1);
+        assert_eq!(index.is_label, false);
+
+        let source = SourceCode::new("r0".to_string());
+        let mut tokens = source.tokens();
+        let expr = parse_expr(&mut tokens).expect("Expression should be valid");
+        let (index, relocation) = assembler
+            .evaluate_memory_index(&expr, Assembler::NO_SECTION)
+            .expect("Memory index should be valid");
+        assert_eq!(relocation, false);
+        assert_eq!(index.disp, 0);
+        assert!(index.base == Register::new_gp(0));
+        assert!(index.index.is_invalid());
+        assert!(index.scale == 1);
+        assert_eq!(index.is_label, false);
+
+        let source = SourceCode::new("r2 + 100".to_string());
+        let mut tokens = source.tokens();
+        let expr = parse_expr(&mut tokens).expect("Expression should be valid");
+        let (index, relocation) = assembler
+            .evaluate_memory_index(&expr, Assembler::NO_SECTION)
+            .expect("Memory index should be valid");
+        assert_eq!(relocation, false);
+        assert_eq!(index.disp, 100);
+        assert!(index.base == Register::new_gp(2));
+        assert!(index.index.is_invalid());
+        assert!(index.scale == 1);
+        assert_eq!(index.is_label, false);
+
+        let source = SourceCode::new("2 * r7 + r1 + 1029".to_string());
+        let mut tokens = source.tokens();
+        let expr = parse_expr(&mut tokens).expect("Expression should be valid");
+        let (index, relocation) = assembler
+            .evaluate_memory_index(&expr, Assembler::NO_SECTION)
+            .expect("Memory index should be valid");
+        assert_eq!(relocation, false);
+        assert_eq!(index.disp, 1029);
+        assert!(index.base == Register::new_gp(1));
+        assert!(index.index == Register::new_gp(7));
+        assert!(index.scale == 2);
+        assert_eq!(index.is_label, false);
+    }
 }

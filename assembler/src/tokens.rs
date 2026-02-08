@@ -16,6 +16,16 @@ use super::assembler_source::Lexer;
 #[derive(Debug, Clone, Copy)]
 pub struct Register(u8);
 
+impl PartialEq for Register {
+    fn eq(&self, other: &Self) -> bool {
+        if self.is_invalid() || other.is_invalid() {
+            false
+        } else {
+            self.0 == other.0
+        }
+    }
+}
+
 impl AsRef<str> for Register {
     fn as_ref(&self) -> &str {
         self.clone().into()
@@ -54,15 +64,35 @@ impl Register {
     const NUM_GP_REGISTERS: u8 = 16;
     /// The index used to specify that the register is the stack pointer
     const SP_INDEX: u8 = 255;
-    /// A register value used to mean there is no register
-    const INVALID_REGISTER: u8 = 254;
+    /// The index used to specify that the register is the instruction pointer
+    const IP_INDEX: u8 = 127;
+    /// A register value that is used to mean there is no register
+    const INVALID_INDEX: u8 = 254;
+    pub const INVALID_REGISTER: Register = Register(Self::INVALID_INDEX);
+
     /// If the register is a general purpose register
     pub fn is_gp(&self) -> bool {
         self.0 < Self::NUM_GP_REGISTERS
     }
+
+    pub fn is_sp(&self) -> bool {
+        self.0 == Register::SP_INDEX
+    }
+
+    pub fn is_ip(&self) -> bool {
+        self.0 == Register::IP_INDEX
+    }
+
+    pub fn is_valid(&self) -> bool {
+        self.0 != Self::INVALID_INDEX
+    }
+
+    pub fn is_invalid(&self) -> bool {
+        !self.is_valid()
+    }
     // Constructs a new general purpose register (r0 -> r15)
     pub fn new_gp(index: u8) -> Self {
-        assert!(index < 16);
+        assert!(index < Self::NUM_GP_REGISTERS);
 
         Self(index)
     }
@@ -71,16 +101,16 @@ impl Register {
         Self(Self::SP_INDEX)
     }
 
+    pub fn new_ip() -> Self {
+        Self(Self::IP_INDEX)
+    }
+
     pub fn none() -> Self {
-        Self(Self::INVALID_REGISTER)
+        Self::INVALID_REGISTER
     }
     /// Returns the index of the register if its a GP
     pub fn get_gp(&self) -> Option<u8> {
-        if self.is_gp() {
-            Some(self.0)
-        } else {
-            None
-        }
+        if self.is_gp() { Some(self.0) } else { None }
     }
 
     /// Returns the register type as OperandFlags
@@ -131,6 +161,8 @@ pub enum Token {
     Comma,
     LBrace,
     RBrace,
+    LSqrBrace,
+    RSqrBrace,
     Plus,
     Sub,
     Mul,
@@ -157,6 +189,8 @@ impl ToString for Token {
             Self::Comma => ",".to_string(),
             Self::LBrace => "(".to_string(),
             Self::RBrace => ")".to_string(),
+            Self::LSqrBrace => "[".to_string(),
+            Self::RSqrBrace => "]".to_string(),
             Self::Plus => "+".to_string(),
             Self::Sub => "-".to_string(),
             Self::Mul => "*".to_string(),
@@ -308,6 +342,8 @@ impl<'a> TokenIter<'a> {
             "," => Some(Token::Comma),
             "(" => Some(Token::LBrace),
             ")" => Some(Token::RBrace),
+            "[" => Some(Token::LSqrBrace),
+            "]" => Some(Token::RSqrBrace),
             "+" => Some(Token::Plus),
             "-" => Some(Token::Sub),
             "*" => Some(Token::Mul),
@@ -366,6 +402,8 @@ impl<'a> TokenIter<'a> {
     fn register(token: &str) -> Option<Register> {
         if token == "sp" {
             return Some(Register::new_sp());
+        } else if token == "ip" {
+            return Some(Register::new_ip());
         }
 
         // The type of register, whether its 8, 16, 32, or 64 bits
