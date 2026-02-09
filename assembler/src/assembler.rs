@@ -253,7 +253,7 @@ impl Assembler {
 impl Assembler {
     /// Does the fixup
     fn do_fixup(&mut self, relocation: &ForwardReferenceEntry) -> Result<bool> {
-        let result = self.evaluate_expression(&relocation.expr, relocation.section)?;
+        let result = self.evaluate_fixup_expression(&relocation.expr, relocation.section)?;
 
         assert!(matches!(result.type_, ExprType::Constant));
 
@@ -336,9 +336,28 @@ impl Assembler {
         }
     }
 
+    fn evaluate_fixup_expression(
+        &self,
+        expr: &Box<Node>,
+        current_section: usize,
+    ) -> Result<ExprResult> {
+        self.generic_evaluate_expression(expr, current_section, true)
+    }
+
     fn evaluate_expression(&self, expr: &Box<Node>, current_section: usize) -> Result<ExprResult> {
+        self.generic_evaluate_expression(expr, current_section, false)
+    }
+
+    /// Parses an expression but lets you control how the parsing works
+    fn generic_evaluate_expression(
+        &self,
+        expr: &Box<Node>,
+        current_section: usize,
+        zero_registers: bool,
+    ) -> Result<ExprResult> {
         match &**expr {
             Node::Constant(value) => Ok(ExprResult::new_imm(*value)),
+            Node::Register(_) if zero_registers => Ok(ExprResult::new_imm(0)),
             Node::Register(register) => Ok(ExprResult {
                 type_: ExprType::Register,
                 immediate: 0,
@@ -383,10 +402,10 @@ impl Assembler {
                     })
                 }
             }
-            Node::Expression(expr) => self.evaluate_expression(expr, current_section),
+            Node::Expression(expr) => self.generic_evaluate_expression(expr, current_section, zero_registers),
             Node::BinaryOp { op, left, right } => {
-                let left = self.evaluate_expression(left, current_section)?;
-                let right = self.evaluate_expression(right, current_section)?;
+                let left = self.generic_evaluate_expression(left, current_section, zero_registers)?;
+                let right = self.generic_evaluate_expression(right, current_section, zero_registers)?;
 
                 if left.type_ == ExprType::Register || right.type_ == ExprType::Register {
                     Err(anyhow!("Invalid operation on register"))
@@ -413,7 +432,7 @@ impl Assembler {
             }
 
             Node::UnaryOp { op, expr } => {
-                let operand = self.evaluate_expression(expr, current_section)?;
+                let operand = self.generic_evaluate_expression(expr, current_section, false)?;
 
                 if operand.type_ == ExprType::Register {
                     Err(anyhow!("Invalid operation on register"))
@@ -846,7 +865,7 @@ impl Assembler {
         //         } else if type_.intersects(OperandFlags::INDEX) {
         //             if index_addresses[i].is_label {
         //                 *reloc_needed = Relocation::PC32;
-        //             }         
+        //             }
         //         } else {
         //             unreachable!("No other operand flag should need a relocation");
         //         }

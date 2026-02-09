@@ -1,4 +1,4 @@
-use anyhow::{Error, Result, anyhow};
+use anyhow::{Context, Error, Result, anyhow};
 use spdlog::debug;
 use std::collections::{HashMap, hash_map::Entry};
 
@@ -7,7 +7,7 @@ use crate::{
         Assembler, calculate_disp32_offset,
         symbol_table::{self, Symbol, SymbolTable, Type},
     },
-    module::Module,
+    module::{self, Module},
     opcode::Relocation,
     section::{self, Section},
 };
@@ -77,38 +77,55 @@ pub fn link(modules: Vec<Module>, script: Vec<Instr>) -> Result<Program, ()> {
         }
     }
 
+    // This stores a list of all module and section indexes for each section
+    let mut section_map: HashMap<String, Vec<(usize, usize)>> = HashMap::new();
+    for (module_idx, module) in modules.iter().enumerate() {
+        for (section_idx, section) in module.sections.iter().enumerate() {
+            match section_map.entry(section.name.clone()) {
+                Entry::Occupied(mut entry) => {
+                    entry.get_mut().push((module_idx, section_idx));
+                }
+                Entry::Vacant(entry) => {
+                    let vec = vec![(module_idx, section_idx)];
+                    entry.insert(vec);
+                }
+            }
+        }
+    }
+
+    // TODO: Make the linker_error function more ergonomic to use
     for instr in &script {
         match instr {
             Instr::Section(section) => {
                 // Glob all remaining sections
                 if section == "*" {
-                    for (module_idx, module) in modules.iter().enumerate() {
-                        for (section_idx, mod_section) in module.sections.iter().enumerate() {
+                    for (_, value) in section_map.iter() {
+                        for (module_idx, section_idx) in value.iter() {
+                            let alignment = modules[*module_idx].sections[*section_idx].alignment;
+                            add_section(
+                                &mut linked,
+                                &mut section_offset.as_mut_slice(),
+                                section_included.as_mut_slice(),
+                                &modules,
+                                *module_idx,
+                                *section_idx,
+                                alignment,
+                            );
+                        }
+                    }
+                } else {
+                    if let Some(sections) = section_map.get(section) {
+                        for (module_idx, section_idx) in sections.iter() {
+                            let alignment = modules[*module_idx].sections[*section_idx].alignment;
                             add_section(
                                 &mut linked,
                                 section_offset.as_mut_slice(),
                                 section_included.as_mut_slice(),
                                 &modules,
-                                module_idx,
-                                section_idx,
-                                mod_section.alignment, 
+                                *module_idx,
+                                *section_idx,
+                                alignment,
                             );
-                        }
-                    }
-                } else {
-                    for (module_idx, module) in modules.iter().enumerate() {
-                        for (section_idx, mod_section) in module.sections.iter().enumerate() {
-                            if section == &mod_section.name {
-                                add_section(
-                                    &mut linked,
-                                    section_offset.as_mut_slice(),
-                                    section_included.as_mut_slice(),
-                                    &modules,
-                                    module_idx,
-                                    section_idx,
-                                    mod_section.alignment,
-                                );
-                            }
                         }
                     }
                 }
@@ -124,11 +141,7 @@ pub fn link(modules: Vec<Module>, script: Vec<Instr>) -> Result<Program, ()> {
             let relocation_offset =
                 section_offset[module_idx][relocation.section] + relocation.offset;
 
-            // TODO: Eventually we need to add types to the symbols in the symbol table and this
-            // will allow us to not have some is_addr booleon but instead be able to understand
-            // what the value of the symbol represents at a more granular level
-            let (value, type_) = if let Some(symbol) =
-                module.symbols.get_symbol(&relocation.symbol)
+            let (value, type_) = if let Some(symbol) = module.symbols.get_symbol(&relocation.symbol)
             {
                 let value = if let Some(section) = symbol.section_index {
                     // TODO: Handle the case where the section won't be included in the final
@@ -136,12 +149,12 @@ pub fn link(modules: Vec<Module>, script: Vec<Instr>) -> Result<Program, ()> {
                     let offset: u64 = section_offset[module_idx][section].try_into().unwrap();
                     symbol.value + offset
                 } else {
-                        symbol.value
+                    symbol.value
                 };
 
                 (value, symbol.type_)
             } else if let Some(global) = globals.get(&relocation.symbol) {
-                let value  = if let Some(section) = global.symbol.section_index {
+                let value = if let Some(section) = global.symbol.section_index {
                     // TODO: Handle the case where the section won't be included in the final
                     // program
                     let offset: u64 = section_offset[global.module][section].try_into().unwrap();
@@ -217,6 +230,64 @@ pub fn link(modules: Vec<Module>, script: Vec<Instr>) -> Result<Program, ()> {
                     );
                     replace_bytes(&mut linked, relocation_offset, &value.to_le_bytes());
                 }
+                Relocation::Abs32 => {
+                    if type_ != Type::Constant {
+                        linker_error(
+                            &mut failed,
+                            &module.filename,
+                            section_name,
+                            relocation_offset,
+                            format!("ABS64 relocation on a {type_}"),
+                        );
+                        continue;
+                    }
+
+                    if let Ok(value) = u32::try_from(value) {
+                        debug!(
+                            "Fixup at {} {section_name}:{relocation_offset} to {value}",
+                            module.filename
+                        );
+                        replace_bytes(&mut linked, relocation_offset, &value.to_le_bytes());
+                    } else {
+                        linker_error(
+                            &mut failed,
+                            &module.filename,
+                            section_name,
+                            relocation_offset,
+                            format!("Relocated value ({}) out of bounds for ABS32", value),
+                        );
+                        continue;
+                    }
+                }
+                Relocation::Abs32S => {
+                    if type_ != Type::Constant {
+                        linker_error(
+                            &mut failed,
+                            &module.filename,
+                            section_name,
+                            relocation_offset,
+                            format!("ABS64 relocation on a {type_}"),
+                        );
+                        continue;
+                    }
+
+                    if let Ok(value) = i32::try_from(value as i64) {
+                        debug!(
+                            "ABS32S Fixup at {} {section_name}:{relocation_offset} to {value}",
+                            module.filename
+                        );
+                        replace_bytes(&mut linked, relocation_offset, &value.to_le_bytes());
+                    } else {
+                        linker_error(
+                            &mut failed,
+                            &module.filename,
+                            section_name,
+                            relocation_offset,
+                            format!("Relocated value ({}) out of bounds for ABS32", value),
+                        );
+                        continue;
+                    }
+                }
                 Relocation::Addr64 => {
                     if type_ != Type::Constant {
                         linker_error(
@@ -272,12 +343,11 @@ fn add_section(
         "Adding {} in {} to the final program",
         modules[module].sections[section].name, modules[module].filename
     );
-    
+
     let alignment: usize = alignment.try_into().unwrap();
     let padding = (alignment - (linked.len() % alignment)) % alignment;
 
     linked.resize(linked.len() + padding, 0);
-
 
     let offset = linked.len();
 

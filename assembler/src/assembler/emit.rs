@@ -51,10 +51,10 @@ enum Size {
 impl From<Relocation> for Size {
     fn from(value: Relocation) -> Self {
         match value {
-            Relocation::Abs8 | Relocation::PC8 => Size::U8,
-            Relocation::Abs16 => Size::U16,
-            Relocation::Abs32 | Relocation::PC32 => Size::U32,
-            Relocation::Abs64 | Relocation::PC64 | Relocation::Addr64 => Size::U64,
+            Relocation::Abs8 | Relocation::Abs8S | Relocation::PC8 => Size::U8,
+            Relocation::Abs16 | Relocation::Abs16S => Size::U16,
+            Relocation::Abs32 | Relocation::Abs32S | Relocation::PC32 => Size::U32,
+            Relocation::Abs64 | Relocation::Abs64S | Relocation::PC64 | Relocation::Addr64 => Size::U64,
             Relocation::None => unreachable!("This shouldn't be reached"),
         }
     }
@@ -180,13 +180,7 @@ fn get_size(value: u64) -> Size {
 }
 
 fn get_size_from_relocation(reloc: Relocation) -> Size {
-    match reloc {
-        Relocation::Abs64 | Relocation::PC64 | Relocation::Addr64 => Size::U64,
-        Relocation::Abs32 | Relocation::PC32 => Size::U32,
-        Relocation::Abs16 => Size::U16,
-        Relocation::Abs8 | Relocation::PC8 => Size::U8,
-        Relocation::None => unreachable!(),
-    }
+    Size::from(reloc)
 }
 
 fn get_memory_access_size(flags: EncodingFlags) -> Size {
@@ -374,8 +368,6 @@ impl Assembler {
                     _ => 0,
                 };
 
-                debug!("{memory_index:#?}");
-
                 // TODO: Make new relocation type for sign extended values
 
                 // Stack pointer based addressing.
@@ -416,7 +408,7 @@ impl Assembler {
                             let offset = self.get_section().cursor();
                             let expr = mem::replace(&mut instruction.exprs[1], None);
                             self.emit_relocation(
-                                Relocation::Abs32,
+                                Relocation::Abs32S,
                                 offset,
                                 expr.expect("Expression should be some"),
                             );
@@ -474,7 +466,7 @@ impl Assembler {
                             let offset = self.get_section().cursor();
                             let expr = mem::replace(&mut instruction.exprs[1], None);
                             self.emit_relocation(
-                                Relocation::Abs32,
+                                Relocation::Abs32S,
                                 offset,
                                 expr.expect("Expression should be some"),
                             );

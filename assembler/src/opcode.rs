@@ -126,6 +126,11 @@ pub enum Relocation {
     Abs16,
     Abs32,
     Abs64,
+    // Sign extended absolute value
+    Abs8S,
+    Abs16S,
+    Abs32S,
+    Abs64S,
     // PC relative relocation
     PC8,
     PC32,
