@@ -55,6 +55,7 @@ void test_mem(Cpu* cpu, uint8_t instruction[16]);
 void test_imm(Cpu* cpu, uint8_t instruction[16]);
 
 void str(Cpu* cpu, uint8_t instruction[16]);
+void lea(Cpu* cpu, uint8_t instruction[16]);
 
 void jmp(Cpu* cpu, uint8_t instruction[16]);
 void jz(Cpu* cpu, uint8_t instruction[16]);

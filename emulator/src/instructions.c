@@ -371,10 +371,10 @@ static inline uint64_t do_idiv(Cpu* cpu, int64_t left, int64_t right) {
 static inline void do_bitwise_flags(Cpu* cpu, uint64_t result) {
     cpu->flags &= ~(FLAG_ZERO | FLAG_CARRY | FLAG_OVERFLOW | FLAG_SIGN);
 
-    if(result == 0) {
+    if (result == 0) {
         cpu->flags |= FLAG_ZERO;
     }
-    if((int64_t)result < 0) {
+    if ((int64_t)result < 0) {
         cpu->flags |= FLAG_SIGN;
     }
 }
@@ -453,9 +453,24 @@ uint64_t get_bis_address(Cpu* cpu, uint8_t* instruction) {
     // offet by 1 because of the next byte
     int disp_idx = 1 + ignore_bit;
 
-    // If disp_width is 1 then the size of the displacement is 2 bytes
-    cpu->ip += 4 >> disp_width;
-    memcpy(&disp, &instruction[disp_idx], 4 >> disp_width);
+    // The displacement is 4 bytes
+    if (disp_width == 0) {
+        cpu->ip += 4;
+
+        int32_t tmp = 0;
+        memcpy(&tmp, &instruction[disp_idx], sizeof(tmp));
+
+        disp = (int64_t)tmp;
+    }
+    // The displacement is 2 bytes
+    else {
+        cpu->ip += 2;
+
+        int16_t tmp = 0;
+        memcpy(&tmp, &instruction[disp_idx], sizeof(tmp));
+
+        disp = (int64_t)tmp;
+    }
 
     uint64_t address = (base * base_scale) + (index * index_scale) + disp;
     return address;
@@ -502,12 +517,27 @@ static inline uint64_t get_sp_rel_address(Cpu* cpu, uint8_t* instruction) {
         sp_scale = scale;
     }
 
-    // If ignore bit is one then the location that the displacment is stored is
-    // offet by 1 because of the next byte
-    cpu->ip += 4 >> disp_width;
-
     uint64_t disp = 0;
-    memcpy(&disp, &instruction[1], 4 >> disp_width);
+    // The displacement is 4 bytes
+    if (disp_width == 0) {
+        cpu->ip += 4;
+
+        int32_t tmp = 0;
+        memcpy(&tmp, &instruction[1], sizeof(tmp));
+
+        // Sign extend the displacement
+        disp = (int64_t)tmp;
+    }
+    // The displacement is 2 bytes
+    else {
+        cpu->ip += 2;
+
+        int16_t tmp = 0;
+        memcpy(&tmp, &instruction[1], sizeof(tmp));
+
+        // Sign extend the displacement
+        disp = (int64_t)tmp;
+    }
 
     uint64_t address = (sp * sp_scale) + (index * index_scale) + disp;
     return address;
@@ -1229,6 +1259,20 @@ void str(Cpu* cpu, uint8_t instruction[16]) {
     }
 }
 
+void lea(Cpu* cpu, uint8_t instruction[16]) {
+    cpu->ip += 2;
+
+    uint8_t dest;
+    addr_mode addr_mode;
+    uint8_t size;
+
+    parse_transfer_byte(instruction[1], &dest, &addr_mode, &size);
+
+    uint64_t address = get_addr_mode_address(cpu, &instruction[2], addr_mode);
+
+    cpu->registers[dest].r = address;
+}
+
 void jmp(Cpu* cpu, uint8_t instruction[16]) {
     cpu->ip += 5;
     int32_t offset;
@@ -1325,7 +1369,8 @@ void jbe(Cpu* cpu, uint8_t instruction[16]) {
 void jg(Cpu* cpu, uint8_t instruction[16]) {
     cpu->ip += 5;
     if ((cpu->flags & FLAG_ZERO) == 0 &&
-        ((cpu->flags & FLAG_SIGN) == 0) == ((cpu->flags & FLAG_OVERFLOW) == 0)) {
+        ((cpu->flags & FLAG_SIGN) == 0) ==
+            ((cpu->flags & FLAG_OVERFLOW) == 0)) {
         int32_t offset;
         memcpy(&offset, &instruction[1], sizeof(offset));
         cpu->ip += (int64_t)offset;

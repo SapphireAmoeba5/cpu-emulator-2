@@ -22,6 +22,7 @@ pub struct Instruction {
 pub enum Mnemonic {
     Mov,
     Str,
+    Lea,
     Add,
     Sub,
     Mul,

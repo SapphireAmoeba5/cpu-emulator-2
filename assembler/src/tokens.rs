@@ -383,6 +383,7 @@ impl<'a> TokenIter<'a> {
         match token.to_lowercase().as_str() {
             "mov" => Some(Mnemonic::Mov),
             "str" => Some(Mnemonic::Str),
+            "lea" => Some(Mnemonic::Lea),
             "add" => Some(Mnemonic::Add),
             "sub" => Some(Mnemonic::Sub),
             "mul" => Some(Mnemonic::Mul),
