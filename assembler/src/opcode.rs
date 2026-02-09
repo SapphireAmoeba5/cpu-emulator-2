@@ -198,7 +198,7 @@ static ENCODING_TABLE: LazyLock<[Vec<InstEncoding>; Mnemonic::COUNT]> = LazyLock
 
         (Mnemonic::Str, vec![
             InstEncoding::new(0x08, false, encoding!(DATA_TRANSFER | MEM64), [OperandFlags::GP_REG, OperandFlags::ADDR64, OperandFlags::empty()]),
-            InstEncoding::new(0x08, false, encoding!(DATA_TRANSFER | MEM64), [OperandFlags::GP_REG, OperandFlags::DISP32, OperandFlags::empty()]),
+            InstEncoding::new(0x08, false, encoding!(DATA_TRANSFER | MEM64), [OperandFlags::GP_REG, OperandFlags::DISP32 | OperandFlags::INDEX, OperandFlags::empty()]),
         ]),
 
         (Mnemonic::Add, vec![

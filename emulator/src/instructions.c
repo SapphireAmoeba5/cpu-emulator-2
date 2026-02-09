@@ -194,7 +194,8 @@ void intpt(Cpu* cpu, uint8_t instruction[16]) {
         printf("Cycle: %llu\n", cpu->clock_count);
         for (int i = 0; i < 16; i++) {
             uint64_t value = cpu->registers[i].r;
-            printf("r%llu = %016llx (%lld)\n", (uint64_t)i, value, (int64_t)value);
+            printf("r%llu = %016llx (%lld)\n", (uint64_t)i, value,
+                   (int64_t)value);
         }
 
         printf("ip: %llu/%lu\nsp: %llu\n", cpu->ip,
@@ -203,15 +204,13 @@ void intpt(Cpu* cpu, uint8_t instruction[16]) {
         printf("%b\n", cpu->flags);
 
         cpu->exit = true;
-    }
-    else if(index == 0x81) {
+    } else if (index == 0x81) {
         cpu->registers[0].r -= 1;
         cpu->flags &= ~FLAG_ZERO;
-        if(cpu->registers[0].r == 0) {
+        if (cpu->registers[0].r == 0) {
             cpu->flags |= FLAG_ZERO;
         }
-    }
-    else if(index == 0x82) {
+    } else if (index == 0x82) {
         printf("DEBUG PRINT %llu\n", cpu->clock_count);
     }
 }
@@ -252,53 +251,144 @@ static inline void parse_transfer_byte(uint8_t byte, uint8_t* dest,
 
 // TODO: Make the passed in `instruction` start at the beginning of where the
 // function should start computing
-static inline uint64_t get_pc_rel_addr(Cpu* cpu, uint8_t instruction[16]) {
+static inline uint64_t get_pc_rel_addr(Cpu* cpu, uint8_t* instruction) {
     cpu->ip += 4;
     int32_t off = 0;
-    memcpy(&off, &instruction[2], sizeof(off));
+    memcpy(&off, &instruction[0], sizeof(off));
     uint64_t address = (uint64_t)((int64_t)cpu->ip + (int64_t)off);
 
     return address;
 }
 
-static inline bool load_pc_rel(Cpu* cpu, uint8_t instruction[16], uint8_t size,
+static inline bool load_pc_rel(Cpu* cpu, uint8_t* instruction, uint8_t size,
                                uint64_t* value) {
     uint64_t address = get_pc_rel_addr(cpu, instruction);
 
     switch (size) {
     case 0:
-        // Only works on little endian
-        if (!cpu_read_1(cpu, address, (uint8_t*)value)) {
-            return false;
-        }
-        break;
+        return cpu_read_1(cpu, address, (uint8_t*)value);
     case 1:
-        // Only works on little endian
-        if (!cpu_read_2(cpu, address, (uint16_t*)value)) {
-            return false;
-        }
-        break;
+        return cpu_read_2(cpu, address, (uint16_t*)value);
     case 2:
-        // Only works on little endian
-        if (!cpu_read_4(cpu, address, (uint32_t*)value)) {
-            return false;
-        }
-        break;
+        return cpu_read_4(cpu, address, (uint32_t*)value);
     case 3:
-        // Only works on little endian
-        if (!cpu_read_8(cpu, address, value)) {
-            return false;
-        }
-        break;
+        return cpu_read_8(cpu, address, (uint64_t*)value);
     default:
         __builtin_unreachable();
     }
-
-    return true;
 }
 
-static inline uint64_t get_sp_rel_addr(Cpu* cpu, uint8_t instruction[16]) {
+uint64_t get_bis_address(Cpu* cpu, uint8_t* instruction) {
     cpu->ip += 1;
+    uint8_t first_byte = instruction[0];
+
+    uint8_t scale = 1 << ((first_byte >> 2) & 0b11);
+
+    uint8_t ignore_bit = first_byte & 1;
+    uint8_t disp_width = (first_byte >> 1) & 1;
+
+    uint64_t base = 0;
+    uint64_t base_scale = 1;
+
+    uint64_t index = 0;
+    uint64_t index_scale = 1;
+
+    if (!ignore_bit) {
+        uint8_t base_reg = (first_byte >> 4) & 0b1111;
+        base = cpu->registers[base_reg].r;
+        base_scale = scale;
+    } else {
+        cpu->ip += 1;
+        uint8_t second_byte = instruction[1];
+        uint8_t base_reg = (second_byte >> 4) & 0b1111;
+        uint8_t index_reg = second_byte & 0b1111;
+
+        base = cpu->registers[base_reg].r;
+        index = cpu->registers[index_reg].r;
+        index_scale = scale;
+    }
+
+    uint64_t disp = 0;
+    // If ignore bit is one then the location that the displacment is stored is
+    // offet by 1 because of the next byte
+    int disp_idx = 1 + ignore_bit;
+
+    // If disp_width is 1 then the size of the displacement is 2 bytes
+    cpu->ip += 4 >> disp_width;
+    memcpy(&disp, &instruction[disp_idx], 4 >> disp_width);
+
+    uint64_t address = (base * base_scale) + (index * index_scale) + disp;
+    return address;
+}
+
+static inline bool load_bis(Cpu* cpu, uint8_t* instruction, uint8_t size,
+                            uint64_t* value) {
+    uint64_t address = get_bis_address(cpu, instruction);
+
+    switch (size) {
+    case 0:
+        return cpu_read_1(cpu, address, (uint8_t*)value);
+    case 1:
+        return cpu_read_2(cpu, address, (uint16_t*)value);
+    case 2:
+        return cpu_read_4(cpu, address, (uint32_t*)value);
+    case 3:
+        return cpu_read_8(cpu, address, (uint64_t*)value);
+    default:
+        __builtin_unreachable();
+    }
+}
+
+static inline uint64_t get_sp_rel_address(Cpu* cpu, uint8_t* instruction) {
+    cpu->ip += 1;
+    uint8_t byte = instruction[0];
+
+    uint8_t scale = 1 << ((byte >> 2) & 0b11);
+
+    uint8_t ignore_bit = byte & 1;
+    uint8_t disp_width = (byte >> 1) & 1;
+
+    uint64_t sp = cpu->sp;
+    uint64_t sp_scale = 1;
+
+    uint64_t index = 0;
+    uint64_t index_scale = 1;
+
+    if (!ignore_bit) {
+        uint8_t base_reg = (byte >> 4) & 0b1111;
+        index = cpu->registers[base_reg].r;
+        index_scale = scale;
+    } else {
+        sp_scale = scale;
+    }
+
+    // If ignore bit is one then the location that the displacment is stored is
+    // offet by 1 because of the next byte
+    cpu->ip += 4 >> disp_width;
+
+    uint64_t disp = 0;
+    memcpy(&disp, &instruction[1], 4 >> disp_width);
+
+    uint64_t address = (sp * sp_scale) + (index * index_scale) + disp;
+    return address;
+}
+
+static inline bool load_sp_rel(Cpu* cpu, uint8_t* instruction, uint8_t size,
+                               uint64_t* value) {
+    uint64_t address = get_sp_rel_address(cpu, instruction);
+
+    switch (size) {
+    case 0:
+        return cpu_read_1(cpu, address, (uint8_t*)value);
+    case 1:
+        return cpu_read_2(cpu, address, (uint16_t*)value);
+    case 2:
+        return cpu_read_4(cpu, address, (uint32_t*)value);
+    case 3:
+        return cpu_read_8(cpu, address, (uint64_t*)value);
+    default:
+        __builtin_unreachable();
+    }
 }
 
 /// `value` must be non null and a valid pointer
@@ -339,6 +429,50 @@ static inline bool load_from_mem(Cpu* cpu, uint64_t address, int size,
     return true;
 }
 
+static inline bool load_addr_mode_address(Cpu* cpu, uint8_t* instruction,
+                                          uint64_t* value, addr_mode addr_mode,
+                                          uint8_t size) {
+    switch (addr_mode) {
+    case PCRel:
+        return load_pc_rel(cpu, instruction, size, value);
+    case BIS:
+        return load_bis(cpu, instruction, size, value);
+    case SPRel:
+        return load_sp_rel(cpu, instruction, size, value);
+    case Addr: {
+        cpu->ip += 8;
+        // The address is always 8 bytes
+        uint64_t address;
+        // Only works on little endian systems
+        memcpy(&address, &instruction[2], sizeof(address));
+        return load_from_mem(cpu, address, size, value);
+    }
+    default:
+        __builtin_unreachable();
+    }
+}
+
+inline static uint64_t get_addr_mode_address(Cpu* cpu, uint8_t* instruction,
+                                             addr_mode addr_mode) {
+    switch (addr_mode) {
+    case PCRel:
+        return get_pc_rel_addr(cpu, instruction);
+    case BIS:
+        return get_bis_address(cpu, instruction);
+    case SPRel:
+        return get_sp_rel_address(cpu, instruction);
+    case Addr:
+        // The immediate value for the str instruction is always 8 bytes
+        cpu->ip += 8;
+
+        uint64_t address;
+        memcpy(&address, &instruction[2], sizeof(address));
+        return address;
+    default:
+        __builtin_unreachable();
+    }
+}
+
 void mov_reg(Cpu* cpu, uint8_t instruction[16]) {
     cpu->ip += 2;
     uint8_t transfer_byte = instruction[1];
@@ -359,33 +493,7 @@ void mov_mem(Cpu* cpu, uint8_t instruction[16]) {
     uint64_t value = 0;
     parse_transfer_byte(instruction[1], &dest, &addr_mode, &size);
 
-    switch (addr_mode) {
-    case PCRel:
-        if (!load_pc_rel(cpu, instruction, size, &value)) {
-            return;
-        }
-        break;
-    case BIS: {
-        assert(1 == 0);
-        break;
-    }
-
-    case SPRel: {
-        assert(1 == 0);
-        break;
-    }
-
-    case Addr: {
-        cpu->ip += 8;
-        // The address is always 8 bytes
-        uint64_t address;
-        // Only works on little endian systems
-        memcpy(&address, &instruction[2], sizeof(address));
-        load_from_mem(cpu, address, size, &value);
-
-        break;
-    }
-    }
+    load_addr_mode_address(cpu, &instruction[2], &value, addr_mode, size);
 
     cpu->registers[dest].r = value;
 }
@@ -417,30 +525,28 @@ void sub_reg(Cpu* cpu, uint8_t instruction[16]) {
 
     uint64_t tmp;
     bool carry = __builtin_sub_overflow(left, right, &tmp);
-    bool overflow = __builtin_sub_overflow((int64_t)left, (int64_t)right, (int64_t*)&tmp);
+    bool overflow =
+        __builtin_sub_overflow((int64_t)left, (int64_t)right, (int64_t*)&tmp);
     bool zero = difference == 0;
     bool sign = (int64_t)difference < 0;
 
     cpu->flags &= ~(FLAG_ZERO | FLAG_CARRY | FLAG_OVERFLOW | FLAG_SIGN);
-    if(carry) {
+    if (carry) {
         cpu->flags |= FLAG_CARRY;
     }
-    if(overflow) {
+    if (overflow) {
         cpu->flags |= FLAG_OVERFLOW;
     }
-    if(zero) {
+    if (zero) {
         cpu->flags |= FLAG_ZERO;
     }
-    if(sign) {
+    if (sign) {
         cpu->flags |= FLAG_SIGN;
     }
 
-
     cpu->registers[dest].r = difference;
 }
-void sub_mem(Cpu* cpu, uint8_t instruction[16]) {
-
-}
+void sub_mem(Cpu* cpu, uint8_t instruction[16]) {}
 void sub_imm(Cpu* cpu, uint8_t instruction[16]) {
     cpu->ip += 2;
     uint8_t dest;
@@ -458,28 +564,29 @@ void sub_imm(Cpu* cpu, uint8_t instruction[16]) {
 
     uint64_t tmp;
     bool carry = __builtin_sub_overflow(left, right, &tmp);
-    bool overflow = __builtin_sub_overflow((int64_t)left, (int64_t)right, (int64_t*)&tmp);
+    bool overflow =
+        __builtin_sub_overflow((int64_t)left, (int64_t)right, (int64_t*)&tmp);
     bool zero = difference == 0;
     bool sign = (int64_t)difference < 0;
 
     cpu->flags &= ~(FLAG_ZERO | FLAG_CARRY | FLAG_OVERFLOW | FLAG_SIGN);
-    if(carry) {
+    if (carry) {
         cpu->flags |= FLAG_CARRY;
     }
-    if(overflow) {
+    if (overflow) {
         cpu->flags |= FLAG_OVERFLOW;
     }
-    if(zero) {
+    if (zero) {
         cpu->flags |= FLAG_ZERO;
     }
-    if(sign) {
+    if (sign) {
         cpu->flags |= FLAG_SIGN;
     }
 
     // TODO: Sign extend
     cpu->registers[dest].r = difference;
-
 }
+
 
 void str(Cpu* cpu, uint8_t instruction[16]) {
     cpu->ip += 2;
@@ -490,24 +597,7 @@ void str(Cpu* cpu, uint8_t instruction[16]) {
 
     parse_transfer_byte(instruction[1], &dest, &addr_mode, &size);
 
-    uint64_t address;
-    switch (addr_mode) {
-    case PCRel:
-        address = get_pc_rel_addr(cpu, instruction);
-        break;
-    case BIS:
-        assert(1 == 0);
-        break;
-    case SPRel:
-        assert(1 == 0);
-        break;
-    case Addr:
-        // The immediate value for the str instruction is always 8 bytes
-        cpu->ip += 8;
-
-        memcpy(&address, &instruction[2], sizeof(address));
-        break;
-    }
+    uint64_t address = get_addr_mode_address(cpu, &instruction[2], addr_mode);
 
     switch (size) {
     case 0:
@@ -536,7 +626,7 @@ void jmp(Cpu* cpu, uint8_t instruction[16]) {
 
 void jnz(Cpu* cpu, uint8_t instruction[16]) {
     cpu->ip += 5;
-    if((cpu->flags & FLAG_ZERO) == 0) {
+    if ((cpu->flags & FLAG_ZERO) == 0) {
         int32_t offset;
         memcpy(&offset, &instruction[1], sizeof(offset));
         cpu->ip += (int64_t)offset;
@@ -545,7 +635,7 @@ void jnz(Cpu* cpu, uint8_t instruction[16]) {
 
 void jz(Cpu* cpu, uint8_t instruction[16]) {
     cpu->ip += 5;
-    if(cpu->flags & FLAG_ZERO) {
+    if (cpu->flags & FLAG_ZERO) {
         int32_t offset;
         memcpy(&offset, &instruction[1], sizeof(offset));
         cpu->ip += (int64_t)offset;
