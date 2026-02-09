@@ -8,17 +8,10 @@
 
 typedef uint16_t flags_t ;
 
-constexpr uint64_t FLAG_ZERO_BITS = 0;
-constexpr flags_t FLAG_ZERO = BIT(FLAG_ZERO_BITS);
-
-constexpr uint64_t FLAG_CARRY_BITS = 1;
-constexpr flags_t FLAG_CARRY = BIT(FLAG_CARRY_BITS);
-
-constexpr uint64_t FLAG_OVERFLOW_BITS = 2;
-constexpr flags_t FLAG_OVERFLOW = BIT(FLAG_OVERFLOW_BITS);
-
-constexpr uint64_t FLAG_SIGN_BITS = 3;
-constexpr flags_t FLAG_SIGN = BIT(FLAG_SIGN_BITS);
+constexpr flags_t FLAG_ZERO = BIT(0);
+constexpr flags_t FLAG_CARRY = BIT(1);
+constexpr flags_t FLAG_OVERFLOW = BIT(2);
+constexpr flags_t FLAG_SIGN = BIT(3);
 
 // Number of instructions to read ahead
 constexpr uint64_t N = 50;

@@ -391,9 +391,30 @@ impl<'a> TokenIter<'a> {
             "and" => Some(Mnemonic::And),
             "or" => Some(Mnemonic::Or),
             "xor" => Some(Mnemonic::Xor),
+            "cmp" => Some(Mnemonic::Cmp),
+            "test" => Some(Mnemonic::Test),
             "jmp" => Some(Mnemonic::Jmp),
-            "jnz" | "jne" => Some(Mnemonic::Jnz),
+
             "jz" | "je" => Some(Mnemonic::Jz),
+            "jnz" | "jne" => Some(Mnemonic::Jnz),
+            "jc" | "jb" | "jnae" => Some(Mnemonic::Jc),
+            "jnc" | "jae" | "jnb" => Some(Mnemonic::Jnc),
+
+            "jo" => Some(Mnemonic::Jo),
+            "jno" => Some(Mnemonic::Jno),
+
+            "js" => Some(Mnemonic::Js),
+            "jns" => Some(Mnemonic::Jns),
+
+            "ja" | "jnbe" => Some(Mnemonic::Ja),
+            "jbe" | "jna" => Some(Mnemonic::Jbe),
+
+            "jg" | "jnle" => Some(Mnemonic::Jg),
+            "jle" | "jng" => Some(Mnemonic::Jle),
+
+            "jge" | "jnl" => Some(Mnemonic::Jge),
+            "jl" | "jnge" => Some(Mnemonic::Jl),
+
             "int" => Some(Mnemonic::Int),
             _ => None,
         }

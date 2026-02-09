@@ -30,8 +30,30 @@ pub enum Mnemonic {
     And,
     Or,
     Xor,
+    Cmp,
+    Test,
     Jmp,
+
     Jnz,
     Jz,
+
+    Jc,
+    Jnc,
+
+    Jo,
+    Jno,
+
+    Js,
+    Jns,
+
+    Ja,
+    Jbe,
+
+    Jg,
+    Jle,
+
+    Jge,
+    Jl,
+
     Int,
 }
