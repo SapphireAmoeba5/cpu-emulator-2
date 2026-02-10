@@ -141,35 +141,36 @@ pub fn link(modules: Vec<Module>, script: Vec<Instr>) -> Result<Program, ()> {
             let relocation_offset =
                 section_offset[module_idx][relocation.section] + relocation.offset;
 
-            let (value, type_) = if let Some(symbol) = module.symbols.get_symbol(&relocation.symbol)
-            {
+            let (value, symbol_section) = if relocation.symbol.is_empty() {
+                (relocation.addend, None)
+            } else if let Some(symbol) = module.symbols.get_symbol(&relocation.symbol) {
                 let value = if let Some(section) = symbol.section_index {
                     // TODO: Handle the case where the section won't be included in the final
                     // program
                     let offset: u64 = section_offset[module_idx][section].try_into().unwrap();
-                    symbol.value + offset
+                    symbol.value + offset + relocation.addend
                 } else {
-                    symbol.value
+                    symbol.value + relocation.addend
                 };
 
-                (value, symbol.type_)
+                (value, symbol.section_index)
             } else if let Some(global) = globals.get(&relocation.symbol) {
                 let value = if let Some(section) = global.symbol.section_index {
                     // TODO: Handle the case where the section won't be included in the final
                     // program
                     let offset: u64 = section_offset[global.module][section].try_into().unwrap();
-                    global.symbol.value + offset
+                    global.symbol.value + offset + relocation.addend
                 } else {
-                    global.symbol.value
+                    global.symbol.value + relocation.addend
                 };
-                (value, global.symbol.type_)
+                (value, global.symbol.section_index)
             } else {
                 linker_error(
                     &mut failed,
                     &module.filename,
                     section_name,
                     relocation_offset,
-                    format!("Undefined symbol {}", relocation.symbol),
+                    format!("Undefined symbol '{}'", relocation.symbol),
                 );
                 continue;
             };
@@ -180,16 +181,6 @@ pub fn link(modules: Vec<Module>, script: Vec<Instr>) -> Result<Program, ()> {
                         "PC32 relocation at {} {section_name}:+{:#x}",
                         module.filename, relocation_offset
                     );
-                    if type_ != Type::Label {
-                        linker_error(
-                            &mut failed,
-                            &module.filename,
-                            section_name,
-                            relocation_offset,
-                            format!("Attempting to perform a PC32 relocation on a {type_}"),
-                        );
-                        continue;
-                    }
                     let pc = (relocation_offset + 4).try_into().unwrap();
 
                     let offset = match calculate_disp32_offset(pc, value) {
@@ -213,13 +204,13 @@ pub fn link(modules: Vec<Module>, script: Vec<Instr>) -> Result<Program, ()> {
                     replace_bytes(&mut linked, relocation_offset, &offset.to_le_bytes());
                 }
                 Relocation::Abs64 => {
-                    if type_ != Type::Constant {
+                    if symbol_section.is_some() {
                         linker_error(
                             &mut failed,
                             &module.filename,
                             section_name,
                             relocation_offset,
-                            format!("ABS64 relocation on a {type_}"),
+                            format!("ABS64 relocation on a relocatable symbol"),
                         );
                         continue;
                     }
@@ -231,13 +222,13 @@ pub fn link(modules: Vec<Module>, script: Vec<Instr>) -> Result<Program, ()> {
                     replace_bytes(&mut linked, relocation_offset, &value.to_le_bytes());
                 }
                 Relocation::Abs32 => {
-                    if type_ != Type::Constant {
+                    if symbol_section.is_some() {
                         linker_error(
                             &mut failed,
                             &module.filename,
                             section_name,
                             relocation_offset,
-                            format!("ABS64 relocation on a {type_}"),
+                            format!("ABS64 relocation on a relocatable symbol"),
                         );
                         continue;
                     }
@@ -260,13 +251,13 @@ pub fn link(modules: Vec<Module>, script: Vec<Instr>) -> Result<Program, ()> {
                     }
                 }
                 Relocation::Abs32S => {
-                    if type_ != Type::Constant {
+                    if symbol_section.is_some() {
                         linker_error(
                             &mut failed,
                             &module.filename,
                             section_name,
                             relocation_offset,
-                            format!("ABS64 relocation on a {type_}"),
+                            format!("ABS32S relocation on a relocatable symbol"),
                         );
                         continue;
                     }
@@ -284,18 +275,6 @@ pub fn link(modules: Vec<Module>, script: Vec<Instr>) -> Result<Program, ()> {
                             section_name,
                             relocation_offset,
                             format!("Relocated value ({}) out of bounds for ABS32", value),
-                        );
-                        continue;
-                    }
-                }
-                Relocation::Addr64 => {
-                    if type_ != Type::Constant {
-                        linker_error(
-                            &mut failed,
-                            &module.filename,
-                            section_name,
-                            relocation_offset,
-                            "ADDR64 relocation on a constant".to_string(),
                         );
                         continue;
                     }

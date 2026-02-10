@@ -59,18 +59,9 @@ fn evaluate_expression(
         Node::Identifier(symbol) => match assembler.symbols.get_symbol(&symbol) {
             Some(value) => {
                 // The symbol is label, otherwise it's a constant value
-                if let Some(section_idx) = value.section_index {
-                    if section_idx == section {
-                        // The label's section and the expression's section are the same so we can
-                        // use the label's offset.
-                        // Offsets within the same section and the same Assembler unit remain fixed
-                        // after linking.
-                        (String::new(), value.value)
-                    } else {
-                        // We can't use the label's offset since it is relative to a different
-                        // section
-                        (symbol.clone(), 0)
-                    }
+                if let Some(_) = value.section_index {
+                    // The label's address is unknown
+                    (symbol.clone(), 0)
                 } else {
                     // The symbol is a constant and is valid in any context
                     (String::new(), value.value)
@@ -79,7 +70,7 @@ fn evaluate_expression(
             None => (symbol.clone(), 0),
         },
         Node::BinaryOp { op, left, right } => {
-            let (left_symbol, left_addend) = evaluate_expression(assembler, section, left)?;
+            let (left_symbol, mut left_addend) = evaluate_expression(assembler, section, left)?;
             let (right_symbol, right_addend) = evaluate_expression(assembler, section, right)?;
 
             let symbol = if left_symbol.is_empty() && right_symbol.is_empty() {
@@ -87,21 +78,34 @@ fn evaluate_expression(
             } else if !left_symbol.is_empty() && right_symbol.is_empty() {
                 left_symbol
             } else if left_symbol.is_empty() && !right_symbol.is_empty() {
+                if *op == BinaryOp::Sub {
+                    return Err(anyhow!("Cannot subtract a relocatable symbol"))
+                }
                 right_symbol
+            }
+            /* If both symbols are offsets into the same section that we can calculate their difference */
+            else if *op == BinaryOp::Sub
+                && !left_symbol.is_empty()
+                && !right_symbol.is_empty()
+                && let Some(left) = assembler.symbols.get_symbol(&left_symbol)
+                && let Some(right) = assembler.symbols.get_symbol(&right_symbol)
+                && let Some(left_section) = left.section_index
+                && let Some(right_section) = right.section_index
+                && left_section == right_section
+                && left_section == section
+            {
+                left_addend = left_addend.wrapping_add(left.value.wrapping_sub(right.value));
+                String::new()
             } else {
-                return Err(anyhow!(
-                    "Cannot perform an operation on two undefined symbols"
-                ));
+                return Err(anyhow!("Failed to create relocation"));
             };
 
-            let new_addend = op.calculate(left_addend, right_addend);
-            if symbol.is_empty() {
-                (String::new(), new_addend)
-            } else if valid_operation_on_undefined_symbol(*op) {
-                (symbol, new_addend)
-            } else {
-                return Err(anyhow!("Invalid operation on an undefined symbol"));
+            if !symbol.is_empty() && *op != BinaryOp::Add {
+                return Err(anyhow!("Invalid operation on relocatable symbol"));
             }
+
+            let new_addend = op.calculate(left_addend, right_addend);
+            (symbol, new_addend)
         }
         Node::UnaryOp { op, expr } => {
             let (symbol, addend) = evaluate_expression(assembler, section, expr)?;
@@ -140,7 +144,11 @@ impl TryFrom<Assembler> for Module {
         // All global symbols must be actual symbols within the module
         for symbol in value.global_symbols.iter() {
             if value.symbols.get_symbol(symbol).is_none() {
-                return Err(anyhow!("in {}:\n\tGlobal symbol {} has no definition", value.filename, symbol))
+                return Err(anyhow!(
+                    "in {}:\n\tGlobal symbol {} has no definition",
+                    value.filename,
+                    symbol
+                ));
             }
         }
 

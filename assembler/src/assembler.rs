@@ -251,113 +251,13 @@ impl Assembler {
 }
 
 impl Assembler {
-    /// Does the fixup
-    fn do_fixup(&mut self, relocation: &ForwardReferenceEntry) -> Result<bool> {
-        let result = self.evaluate_fixup_expression(&relocation.expr, relocation.section)?;
-
-        assert!(matches!(result.type_, ExprType::Constant));
-
-        if result.relocation {
-            return Ok(false);
-        }
-        let constant = result.immediate;
-
-        match relocation.relocation {
-            Relocation::Abs64 => {
-                if result.is_label {
-                    // TODO: Add error messages
-                }
-                let offset = relocation.offset;
-
-                self.sections[relocation.section].replace_bytes(offset, &constant.to_le_bytes());
-            }
-            Relocation::Abs8 => {
-                let constant: u8 = constant
-                    .try_into()
-                    .context("Symbol's value is too large for a ABS8 relocation")?;
-                let offset = relocation.offset;
-                self.sections[relocation.section].replace_bytes(offset, &constant.to_le_bytes());
-            }
-            Relocation::PC32 => {
-                // Where the program counter will be when the instruction is executed
-                let pc: u64 = (relocation.offset + 4).try_into().unwrap();
-                let offset = emit::calculate_disp32_offset(pc, constant)?;
-
-                debug!(
-                    "Fixing PC32 relocation at {:#x} to {offset:#x} {}+{:#x}",
-                    relocation.offset,
-                    self.sections[relocation.section].name,
-                    pc as i64 + offset as i64
-                );
-
-                self.sections[relocation.section]
-                    .replace_bytes(relocation.offset, &offset.to_le_bytes());
-            }
-            // TODO: Implement the other relocation types
-            _ => todo!("Relocation {:?}", relocation.relocation),
-        }
-
-        Ok(true)
-    }
-
-    /// Iterates over all the relocations and attempts fixups on them if possible
-    fn fix_forward_references(&mut self) -> Result<()> {
-        let relocation_count = self.forward_references.len();
-        let mut resolved = vec![false; relocation_count];
-
-        // std::mem::take to appease the borrow checker
-        let mut relocations = std::mem::take(&mut self.forward_references);
-
-        let mut failed = false;
-        for i in 0..relocation_count {
-            let relocation = &relocations[i];
-            let line_number = relocation.line_number;
-            let was_resolved = match self.do_fixup(relocation) {
-                Ok(resolved) => resolved,
-                Err(e) => {
-                    failed = true;
-                    println!("Error {}:{}: {e}", self.filename, line_number);
-                    false
-                }
-            };
-
-            resolved[i] = was_resolved;
-        }
-
-        let mut resolved = resolved.iter();
-        relocations.retain(|_| !*resolved.next().unwrap());
-
-        self.forward_references = relocations;
-
-        if failed {
-            Err(anyhow!("Failed to fix forward references"))
-        } else {
-            Ok(())
-        }
-    }
-
-    fn evaluate_fixup_expression(
+    fn evaluate_expression(
         &self,
         expr: &Box<Node>,
         current_section: usize,
-    ) -> Result<ExprResult> {
-        self.generic_evaluate_expression(expr, current_section, true)
-    }
-
-    fn evaluate_expression(&self, expr: &Box<Node>, current_section: usize) -> Result<ExprResult> {
-        self.generic_evaluate_expression(expr, current_section, false)
-    }
-
-    /// Parses an expression but lets you control how the parsing works
-    fn generic_evaluate_expression(
-        &self,
-        expr: &Box<Node>,
-        current_section: usize,
-        zero_registers: bool,
     ) -> Result<ExprResult> {
         match &**expr {
             Node::Constant(value) => Ok(ExprResult::new_imm(*value)),
-            Node::Register(_) if zero_registers => Ok(ExprResult::new_imm(0)),
             Node::Register(register) => Ok(ExprResult {
                 type_: ExprType::Register,
                 immediate: 0,
@@ -402,10 +302,10 @@ impl Assembler {
                     })
                 }
             }
-            Node::Expression(expr) => self.generic_evaluate_expression(expr, current_section, zero_registers),
+            Node::Expression(expr) => self.evaluate_expression(expr, current_section),
             Node::BinaryOp { op, left, right } => {
-                let left = self.generic_evaluate_expression(left, current_section, zero_registers)?;
-                let right = self.generic_evaluate_expression(right, current_section, zero_registers)?;
+                let left = self.evaluate_expression(left, current_section)?;
+                let right = self.evaluate_expression(right, current_section)?;
 
                 if left.type_ == ExprType::Register || right.type_ == ExprType::Register {
                     Err(anyhow!("Invalid operation on register"))
@@ -432,7 +332,7 @@ impl Assembler {
             }
 
             Node::UnaryOp { op, expr } => {
-                let operand = self.generic_evaluate_expression(expr, current_section, false)?;
+                let operand = self.evaluate_expression(expr, current_section)?;
 
                 if operand.type_ == ExprType::Register {
                     Err(anyhow!("Invalid operation on register"))
@@ -709,9 +609,9 @@ impl Assembler {
 
         let result = assembler.parse_source(source);
 
-        if result {
-            assembler.fix_forward_references()?;
-        }
+        // if result {
+        //     assembler.fix_forward_references()?;
+        // }
 
         result
             .then(|| assembler)

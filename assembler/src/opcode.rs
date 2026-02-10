@@ -135,7 +135,16 @@ pub enum Relocation {
     PC8,
     PC32,
     PC64,
-    Addr64,
+}
+
+impl Relocation {
+    pub fn is_pc_relative(&self) -> bool {
+        use Relocation::*;
+        match self {
+            PC8 | PC32 | PC64 => true,
+            _ => false,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy)]

@@ -54,7 +54,7 @@ impl From<Relocation> for Size {
             Relocation::Abs8 | Relocation::Abs8S | Relocation::PC8 => Size::U8,
             Relocation::Abs16 | Relocation::Abs16S => Size::U16,
             Relocation::Abs32 | Relocation::Abs32S | Relocation::PC32 => Size::U32,
-            Relocation::Abs64 | Relocation::Abs64S | Relocation::PC64 | Relocation::Addr64 => Size::U64,
+            Relocation::Abs64 | Relocation::Abs64S | Relocation::PC64 => Size::U64,
             Relocation::None => unreachable!("This shouldn't be reached"),
         }
     }
@@ -290,7 +290,7 @@ impl Assembler {
                     // Add one to account for the transfer byte
                     let offset = self.get_section().cursor() + 1;
                     let expr = std::mem::replace(&mut instruction.exprs[1], None);
-                    self.emit_relocation(Relocation::Addr64, offset, expr.unwrap());
+                    self.emit_relocation(Relocation::Abs64, offset, expr.unwrap());
                 }
 
                 let size = get_memory_access_size(options);
