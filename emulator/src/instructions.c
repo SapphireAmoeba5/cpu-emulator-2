@@ -198,9 +198,7 @@ void intpt(Cpu* cpu, uint8_t instruction[16]) {
                    (int64_t)value);
         }
 
-        printf("ip: %llu/%lu\nsp: %llu/%lu\n", cpu->ip,
-               memory_size_bytes(cpu->memory), cpu->sp,
-               memory_size_bytes(cpu->memory));
+        printf("ip: %llu\nsp: %llu\n", cpu->ip, cpu->sp);
 
         printf("ZR | CR | OF | SN\n");
 
@@ -1241,21 +1239,27 @@ void str(Cpu* cpu, uint8_t instruction[16]) {
 
     uint64_t address = get_addr_mode_address(cpu, &instruction[2], addr_mode);
 
+    bool status;
     switch (size) {
     case 0:
-        cpu_write_1(cpu, cpu->registers[dest].b, address);
+        status = cpu_write_1(cpu, cpu->registers[dest].b, address);
         break;
     case 1:
-        cpu_write_2(cpu, cpu->registers[dest].s, address);
+        status = cpu_write_2(cpu, cpu->registers[dest].s, address);
         break;
     case 2:
-        cpu_write_4(cpu, cpu->registers[dest].w, address);
+        status = cpu_write_4(cpu, cpu->registers[dest].w, address);
         break;
     case 3:
-        cpu_write_8(cpu, cpu->registers[dest].r, address);
+        status = cpu_write_8(cpu, cpu->registers[dest].r, address);
         break;
     default:
         __builtin_unreachable();
+    }
+
+    if(!status) {
+        printf("TODO: Impelement exceptions\n");
+        exit(1);
     }
 }
 

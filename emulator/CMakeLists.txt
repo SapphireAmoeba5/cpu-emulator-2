@@ -12,6 +12,13 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS TRUE)
 add_executable(${PROJECT_NAME}
     src/main.c
     src/cpu.c
-    src/memory.c
+    # src/memory.c
     src/instructions.c
+    src/address_bus.c
+    src/bus_device.c
+    src/devices/memory.c
+)
+
+target_include_directories(${PROJECT_NAME} PUBLIC
+    src/
 )

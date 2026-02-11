@@ -1,6 +1,6 @@
 #pragma once
 
-#include "memory.h"
+#include "address_bus.h"
 #include <stdint.h>
 #include <stdbool.h>
 
@@ -14,7 +14,7 @@ constexpr flags_t FLAG_OVERFLOW = BIT(2);
 constexpr flags_t FLAG_SIGN = BIT(3);
 
 // Number of instructions to read ahead
-constexpr uint64_t N = 50;
+constexpr uint64_t N = 20;
 // Size of the instruction buffer in uin64_t's. Add's one to account for alignment when populating the instruction buffer
 constexpr uint64_t BUF_SIZE = (N + 1) * 2;
 constexpr uint64_t SIZE_BYTES = BUF_SIZE * sizeof(uint64_t);
@@ -27,7 +27,7 @@ typedef union reg {
 } reg;
 
 typedef struct Cpu {
-    Memory* memory;
+    address_bus* bus;
     // Total number of clocks
     uint64_t clock_count;
     // 32 general purpose registers
@@ -62,6 +62,6 @@ bool cpu_read_2(Cpu* cpu, size_t address,  uint16_t* value);
 /// `value` must not be NULL
 bool cpu_read_1(Cpu* cpu, size_t address,  uint8_t* value);
 
-void cpu_create(Cpu* cpu, Memory* memory);
+void cpu_create(Cpu* cpu, address_bus* bus);
 void cpu_destroy(Cpu* cpu);
 void cpu_run(Cpu* cpu);

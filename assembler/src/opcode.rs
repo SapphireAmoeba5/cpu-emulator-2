@@ -209,6 +209,25 @@ static ENCODING_TABLE: LazyLock<[Vec<InstEncoding>; Mnemonic::COUNT]> = LazyLock
             InstEncoding::new(0x08, false, encoding!(DATA_TRANSFER | MEM64), [OperandFlags::GP_REG, OperandFlags::ADDR64, OperandFlags::empty()]),
             InstEncoding::new(0x08, false, encoding!(DATA_TRANSFER | MEM64), [OperandFlags::GP_REG, OperandFlags::DISP32 | OperandFlags::INDEX, OperandFlags::empty()]),
         ]),
+        (Mnemonic::StrU8, vec![
+            InstEncoding::new(0x08, false, encoding!(DATA_TRANSFER | MEM8), [OperandFlags::GP_REG, OperandFlags::ADDR64, OperandFlags::empty()]),
+            InstEncoding::new(0x08, false, encoding!(DATA_TRANSFER | MEM8), [OperandFlags::GP_REG, OperandFlags::DISP32 | OperandFlags::INDEX, OperandFlags::empty()]),
+        ]),
+
+        (Mnemonic::StrU16, vec![
+            InstEncoding::new(0x08, false, encoding!(DATA_TRANSFER | MEM16), [OperandFlags::GP_REG, OperandFlags::ADDR64, OperandFlags::empty()]),
+            InstEncoding::new(0x08, false, encoding!(DATA_TRANSFER | MEM16), [OperandFlags::GP_REG, OperandFlags::DISP32 | OperandFlags::INDEX, OperandFlags::empty()]),
+        ]),
+
+        (Mnemonic::StrU32, vec![
+            InstEncoding::new(0x08, false, encoding!(DATA_TRANSFER | MEM32), [OperandFlags::GP_REG, OperandFlags::ADDR64, OperandFlags::empty()]),
+            InstEncoding::new(0x08, false, encoding!(DATA_TRANSFER | MEM32), [OperandFlags::GP_REG, OperandFlags::DISP32 | OperandFlags::INDEX, OperandFlags::empty()]),
+        ]),
+
+        (Mnemonic::StrU64, vec![
+            InstEncoding::new(0x08, false, encoding!(DATA_TRANSFER | MEM64), [OperandFlags::GP_REG, OperandFlags::ADDR64, OperandFlags::empty()]),
+            InstEncoding::new(0x08, false, encoding!(DATA_TRANSFER | MEM64), [OperandFlags::GP_REG, OperandFlags::DISP32 | OperandFlags::INDEX, OperandFlags::empty()]),
+        ]),
 
         (Mnemonic::Lea, vec![
             InstEncoding::new(0x09, false, encoding!(DATA_TRANSFER | MEM64), [OperandFlags::GP_REG, OperandFlags::ADDR64, OperandFlags::empty()]),
