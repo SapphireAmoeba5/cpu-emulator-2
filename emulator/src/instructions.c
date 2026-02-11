@@ -11,56 +11,6 @@
 
 #define INT_SUB_OVERFLOW_CHECK(A, B) __builtin_sub_overflow_p((A), (B), 0)
 
-#define REG_OPERATION(OP)                                                      \
-    cpu->ip += 2;                                                              \
-    uint8_t transfer_byte = instruction[1];                                    \
-    uint8_t dest;                                                              \
-    uint8_t src;                                                               \
-    parse_reg_transfer_byte(transfer_byte, &dest, &src);                       \
-    cpu->registers[dest] = cpu->registers[src];
-
-#define IMM_OPERATION(OP)                                                      \
-    cpu->ip += 2;                                                              \
-    uint8_t dest;                                                              \
-    int size;                                                                  \
-    bool sign_extend;                                                          \
-    parse_imm_transfer_byte(instruction[1], &dest, &size, &sign_extend);       \
-    cpu->ip += 1 << size;                                                      \
-    uint64_t value = 0;                                                        \
-    memcpy(&value, &instruction[2], 1 << size);                                \
-    switch (size) {                                                            \
-    case 0: {                                                                  \
-        if (sign_extend) {                                                     \
-            value = (int64_t)((int8_t)value);                                  \
-            cpu->registers[dest].r OP value;                                   \
-        } else {                                                               \
-            cpu->registers[dest].b OP value;                                   \
-        }                                                                      \
-        break;                                                                 \
-    }                                                                          \
-    case 1: {                                                                  \
-        if (sign_extend) {                                                     \
-            value = (int64_t)((int16_t)value);                                 \
-            cpu->registers[dest].r OP value;                                   \
-        } else {                                                               \
-            cpu->registers[dest].s OP value;                                   \
-        }                                                                      \
-        break;                                                                 \
-    }                                                                          \
-    case 2: {                                                                  \
-        if (sign_extend) {                                                     \
-            value = (int64_t)((int32_t)value);                                 \
-            cpu->registers[dest].r OP value;                                   \
-        } else {                                                               \
-            cpu->registers[dest].w OP value;                                   \
-        }                                                                      \
-        break;                                                                 \
-    }                                                                          \
-    case 3: {                                                                  \
-        cpu->registers[dest].r OP value;                                       \
-        break;                                                                 \
-    }                                                                          \
-    }
 
 // Split into two different structs because the encoding is slightly different
 typedef struct dest_byte {

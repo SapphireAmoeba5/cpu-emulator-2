@@ -205,6 +205,26 @@ static ENCODING_TABLE: LazyLock<[Vec<InstEncoding>; Mnemonic::COUNT]> = LazyLock
             InstEncoding::new(0x07, false, encoding!(DATA_TRANSFER | MEM64), [OperandFlags::GP_REG, OperandFlags::DISP32 | OperandFlags::INDEX, OperandFlags::empty()]),
         ]),
 
+        (Mnemonic::MovU8, vec![
+            InstEncoding::new(0x07, false, encoding!(DATA_TRANSFER | MEM8), [OperandFlags::GP_REG, OperandFlags::ADDR64, OperandFlags::empty()]),
+            InstEncoding::new(0x07, false, encoding!(DATA_TRANSFER | MEM8), [OperandFlags::GP_REG, OperandFlags::DISP32 | OperandFlags::INDEX, OperandFlags::empty()]),
+        ]),
+
+        (Mnemonic::MovU16, vec![
+            InstEncoding::new(0x07, false, encoding!(DATA_TRANSFER | MEM16), [OperandFlags::GP_REG, OperandFlags::ADDR64, OperandFlags::empty()]),
+            InstEncoding::new(0x07, false, encoding!(DATA_TRANSFER | MEM16), [OperandFlags::GP_REG, OperandFlags::DISP32 | OperandFlags::INDEX, OperandFlags::empty()]),
+        ]),
+        
+        (Mnemonic::MovU32, vec![
+            InstEncoding::new(0x07, false, encoding!(DATA_TRANSFER | MEM32), [OperandFlags::GP_REG, OperandFlags::ADDR64, OperandFlags::empty()]),
+            InstEncoding::new(0x07, false, encoding!(DATA_TRANSFER | MEM32), [OperandFlags::GP_REG, OperandFlags::DISP32 | OperandFlags::INDEX, OperandFlags::empty()]),
+        ]),
+
+        (Mnemonic::MovU64, vec![
+            InstEncoding::new(0x07, false, encoding!(DATA_TRANSFER | MEM64), [OperandFlags::GP_REG, OperandFlags::ADDR64, OperandFlags::empty()]),
+            InstEncoding::new(0x07, false, encoding!(DATA_TRANSFER | MEM64), [OperandFlags::GP_REG, OperandFlags::DISP32 | OperandFlags::INDEX, OperandFlags::empty()]),
+        ]),
+
         (Mnemonic::Str, vec![
             InstEncoding::new(0x08, false, encoding!(DATA_TRANSFER | MEM64), [OperandFlags::GP_REG, OperandFlags::ADDR64, OperandFlags::empty()]),
             InstEncoding::new(0x08, false, encoding!(DATA_TRANSFER | MEM64), [OperandFlags::GP_REG, OperandFlags::DISP32 | OperandFlags::INDEX, OperandFlags::empty()]),
@@ -224,11 +244,6 @@ static ENCODING_TABLE: LazyLock<[Vec<InstEncoding>; Mnemonic::COUNT]> = LazyLock
             InstEncoding::new(0x08, false, encoding!(DATA_TRANSFER | MEM32), [OperandFlags::GP_REG, OperandFlags::DISP32 | OperandFlags::INDEX, OperandFlags::empty()]),
         ]),
 
-        (Mnemonic::StrU64, vec![
-            InstEncoding::new(0x08, false, encoding!(DATA_TRANSFER | MEM64), [OperandFlags::GP_REG, OperandFlags::ADDR64, OperandFlags::empty()]),
-            InstEncoding::new(0x08, false, encoding!(DATA_TRANSFER | MEM64), [OperandFlags::GP_REG, OperandFlags::DISP32 | OperandFlags::INDEX, OperandFlags::empty()]),
-        ]),
-
         (Mnemonic::Lea, vec![
             InstEncoding::new(0x09, false, encoding!(DATA_TRANSFER | MEM64), [OperandFlags::GP_REG, OperandFlags::ADDR64, OperandFlags::empty()]),
             InstEncoding::new(0x09, false, encoding!(DATA_TRANSFER | MEM64), [OperandFlags::GP_REG, OperandFlags::DISP32 | OperandFlags::INDEX, OperandFlags::empty()]),
@@ -242,12 +257,44 @@ static ENCODING_TABLE: LazyLock<[Vec<InstEncoding>; Mnemonic::COUNT]> = LazyLock
             InstEncoding::new(0x017, false, encoding!(DATA_TRANSFER | MEM64), [OperandFlags::GP_REG, OperandFlags::ADDR64, OperandFlags::empty()]),
             InstEncoding::new(0x017, false, encoding!(DATA_TRANSFER | MEM64), [OperandFlags::GP_REG, OperandFlags::DISP32 | OperandFlags::INDEX, OperandFlags::empty()]),
         ]),
+        (Mnemonic::AddU8, vec![
+            InstEncoding::new(0x017, false, encoding!(DATA_TRANSFER | MEM8), [OperandFlags::GP_REG, OperandFlags::ADDR64, OperandFlags::empty()]),
+            InstEncoding::new(0x017, false, encoding!(DATA_TRANSFER | MEM8), [OperandFlags::GP_REG, OperandFlags::DISP32 | OperandFlags::INDEX, OperandFlags::empty()]),
+        ]),
+        (Mnemonic::AddU16, vec![
+            InstEncoding::new(0x017, false, encoding!(DATA_TRANSFER | MEM16), [OperandFlags::GP_REG, OperandFlags::ADDR64, OperandFlags::empty()]),
+            InstEncoding::new(0x017, false, encoding!(DATA_TRANSFER | MEM16), [OperandFlags::GP_REG, OperandFlags::DISP32 | OperandFlags::INDEX, OperandFlags::empty()]),
+        ]),
+        (Mnemonic::AddU32, vec![
+            InstEncoding::new(0x017, false, encoding!(DATA_TRANSFER | MEM32), [OperandFlags::GP_REG, OperandFlags::ADDR64, OperandFlags::empty()]),
+            InstEncoding::new(0x017, false, encoding!(DATA_TRANSFER | MEM32), [OperandFlags::GP_REG, OperandFlags::DISP32 | OperandFlags::INDEX, OperandFlags::empty()]),
+        ]),
+        (Mnemonic::AddU64, vec![
+            InstEncoding::new(0x017, false, encoding!(DATA_TRANSFER | MEM64), [OperandFlags::GP_REG, OperandFlags::ADDR64, OperandFlags::empty()]),
+            InstEncoding::new(0x017, false, encoding!(DATA_TRANSFER | MEM64), [OperandFlags::GP_REG, OperandFlags::DISP32 | OperandFlags::INDEX, OperandFlags::empty()]),
+        ]),
 
         (Mnemonic::Sub, vec![
             InstEncoding::new(0x025, false, encoding!(DATA_TRANSFER), [OperandFlags::GP_REG, OperandFlags::GP_REG, OperandFlags::empty()]),
 
             InstEncoding::new(0x026, false, encoding!(DATA_TRANSFER), [OperandFlags::GP_REG, OperandFlags::IMM64, OperandFlags::empty()]),
 
+            InstEncoding::new(0x027, false, encoding!(DATA_TRANSFER | MEM64), [OperandFlags::GP_REG, OperandFlags::ADDR64, OperandFlags::empty()]),
+            InstEncoding::new(0x027, false, encoding!(DATA_TRANSFER | MEM64), [OperandFlags::GP_REG, OperandFlags::DISP32 | OperandFlags::INDEX, OperandFlags::empty()]),
+        ]),
+        (Mnemonic::SubU8, vec![
+            InstEncoding::new(0x027, false, encoding!(DATA_TRANSFER | MEM8), [OperandFlags::GP_REG, OperandFlags::ADDR64, OperandFlags::empty()]),
+            InstEncoding::new(0x027, false, encoding!(DATA_TRANSFER | MEM8), [OperandFlags::GP_REG, OperandFlags::DISP32 | OperandFlags::INDEX, OperandFlags::empty()]),
+        ]),
+        (Mnemonic::SubU16, vec![
+            InstEncoding::new(0x027, false, encoding!(DATA_TRANSFER | MEM16), [OperandFlags::GP_REG, OperandFlags::ADDR64, OperandFlags::empty()]),
+            InstEncoding::new(0x027, false, encoding!(DATA_TRANSFER | MEM16), [OperandFlags::GP_REG, OperandFlags::DISP32 | OperandFlags::INDEX, OperandFlags::empty()]),
+        ]),
+        (Mnemonic::SubU32, vec![
+            InstEncoding::new(0x027, false, encoding!(DATA_TRANSFER | MEM32), [OperandFlags::GP_REG, OperandFlags::ADDR64, OperandFlags::empty()]),
+            InstEncoding::new(0x027, false, encoding!(DATA_TRANSFER | MEM32), [OperandFlags::GP_REG, OperandFlags::DISP32 | OperandFlags::INDEX, OperandFlags::empty()]),
+        ]),
+        (Mnemonic::SubU64, vec![
             InstEncoding::new(0x027, false, encoding!(DATA_TRANSFER | MEM64), [OperandFlags::GP_REG, OperandFlags::ADDR64, OperandFlags::empty()]),
             InstEncoding::new(0x027, false, encoding!(DATA_TRANSFER | MEM64), [OperandFlags::GP_REG, OperandFlags::DISP32 | OperandFlags::INDEX, OperandFlags::empty()]),
         ]),
@@ -260,12 +307,44 @@ static ENCODING_TABLE: LazyLock<[Vec<InstEncoding>; Mnemonic::COUNT]> = LazyLock
             InstEncoding::new(0x037, false, encoding!(DATA_TRANSFER | MEM64), [OperandFlags::GP_REG, OperandFlags::ADDR64, OperandFlags::empty()]),
             InstEncoding::new(0x037, false, encoding!(DATA_TRANSFER | MEM64), [OperandFlags::GP_REG, OperandFlags::DISP32 | OperandFlags::INDEX, OperandFlags::empty()]),
         ]),
+        (Mnemonic::MulU8, vec![
+            InstEncoding::new(0x037, false, encoding!(DATA_TRANSFER | MEM8), [OperandFlags::GP_REG, OperandFlags::ADDR64, OperandFlags::empty()]),
+            InstEncoding::new(0x037, false, encoding!(DATA_TRANSFER | MEM8), [OperandFlags::GP_REG, OperandFlags::DISP32 | OperandFlags::INDEX, OperandFlags::empty()]),
+        ]),
+        (Mnemonic::MulU16, vec![
+            InstEncoding::new(0x037, false, encoding!(DATA_TRANSFER | MEM16), [OperandFlags::GP_REG, OperandFlags::ADDR64, OperandFlags::empty()]),
+            InstEncoding::new(0x037, false, encoding!(DATA_TRANSFER | MEM16), [OperandFlags::GP_REG, OperandFlags::DISP32 | OperandFlags::INDEX, OperandFlags::empty()]),
+        ]),
+        (Mnemonic::MulU32, vec![
+            InstEncoding::new(0x037, false, encoding!(DATA_TRANSFER | MEM32), [OperandFlags::GP_REG, OperandFlags::ADDR64, OperandFlags::empty()]),
+            InstEncoding::new(0x037, false, encoding!(DATA_TRANSFER | MEM32), [OperandFlags::GP_REG, OperandFlags::DISP32 | OperandFlags::INDEX, OperandFlags::empty()]),
+        ]),
+        (Mnemonic::MulU64, vec![
+            InstEncoding::new(0x037, false, encoding!(DATA_TRANSFER | MEM64), [OperandFlags::GP_REG, OperandFlags::ADDR64, OperandFlags::empty()]),
+            InstEncoding::new(0x037, false, encoding!(DATA_TRANSFER | MEM64), [OperandFlags::GP_REG, OperandFlags::DISP32 | OperandFlags::INDEX, OperandFlags::empty()]),
+        ]),
 
         (Mnemonic::Div, vec![
             InstEncoding::new(0x045, false, encoding!(DATA_TRANSFER), [OperandFlags::GP_REG, OperandFlags::GP_REG, OperandFlags::empty()]),
 
             InstEncoding::new(0x046, false, encoding!(DATA_TRANSFER), [OperandFlags::GP_REG, OperandFlags::IMM64, OperandFlags::empty()]),
 
+            InstEncoding::new(0x047, false, encoding!(DATA_TRANSFER | MEM64), [OperandFlags::GP_REG, OperandFlags::ADDR64, OperandFlags::empty()]),
+            InstEncoding::new(0x047, false, encoding!(DATA_TRANSFER | MEM64), [OperandFlags::GP_REG, OperandFlags::DISP32 | OperandFlags::INDEX, OperandFlags::empty()]),
+        ]),
+        (Mnemonic::DivU8, vec![
+            InstEncoding::new(0x047, false, encoding!(DATA_TRANSFER | MEM8), [OperandFlags::GP_REG, OperandFlags::ADDR64, OperandFlags::empty()]),
+            InstEncoding::new(0x047, false, encoding!(DATA_TRANSFER | MEM8), [OperandFlags::GP_REG, OperandFlags::DISP32 | OperandFlags::INDEX, OperandFlags::empty()]),
+        ]),
+        (Mnemonic::DivU16, vec![
+            InstEncoding::new(0x047, false, encoding!(DATA_TRANSFER | MEM16), [OperandFlags::GP_REG, OperandFlags::ADDR64, OperandFlags::empty()]),
+            InstEncoding::new(0x047, false, encoding!(DATA_TRANSFER | MEM16), [OperandFlags::GP_REG, OperandFlags::DISP32 | OperandFlags::INDEX, OperandFlags::empty()]),
+        ]),
+        (Mnemonic::DivU32, vec![
+            InstEncoding::new(0x047, false, encoding!(DATA_TRANSFER | MEM32), [OperandFlags::GP_REG, OperandFlags::ADDR64, OperandFlags::empty()]),
+            InstEncoding::new(0x047, false, encoding!(DATA_TRANSFER | MEM32), [OperandFlags::GP_REG, OperandFlags::DISP32 | OperandFlags::INDEX, OperandFlags::empty()]),
+        ]),
+        (Mnemonic::DivU64, vec![
             InstEncoding::new(0x047, false, encoding!(DATA_TRANSFER | MEM64), [OperandFlags::GP_REG, OperandFlags::ADDR64, OperandFlags::empty()]),
             InstEncoding::new(0x047, false, encoding!(DATA_TRANSFER | MEM64), [OperandFlags::GP_REG, OperandFlags::DISP32 | OperandFlags::INDEX, OperandFlags::empty()]),
         ]),
@@ -278,12 +357,44 @@ static ENCODING_TABLE: LazyLock<[Vec<InstEncoding>; Mnemonic::COUNT]> = LazyLock
             InstEncoding::new(0x057, false, encoding!(DATA_TRANSFER | MEM64), [OperandFlags::GP_REG, OperandFlags::ADDR64, OperandFlags::empty()]),
             InstEncoding::new(0x057, false, encoding!(DATA_TRANSFER | MEM64), [OperandFlags::GP_REG, OperandFlags::DISP32 | OperandFlags::INDEX, OperandFlags::empty()]),
         ]),
+        (Mnemonic::IdivU8, vec![
+            InstEncoding::new(0x057, false, encoding!(DATA_TRANSFER | MEM8), [OperandFlags::GP_REG, OperandFlags::ADDR64, OperandFlags::empty()]),
+            InstEncoding::new(0x057, false, encoding!(DATA_TRANSFER | MEM8), [OperandFlags::GP_REG, OperandFlags::DISP32 | OperandFlags::INDEX, OperandFlags::empty()]),
+        ]),
+        (Mnemonic::IdivU16, vec![
+            InstEncoding::new(0x057, false, encoding!(DATA_TRANSFER | MEM16), [OperandFlags::GP_REG, OperandFlags::ADDR64, OperandFlags::empty()]),
+            InstEncoding::new(0x057, false, encoding!(DATA_TRANSFER | MEM16), [OperandFlags::GP_REG, OperandFlags::DISP32 | OperandFlags::INDEX, OperandFlags::empty()]),
+        ]),
+        (Mnemonic::IdivU32, vec![
+            InstEncoding::new(0x057, false, encoding!(DATA_TRANSFER | MEM32), [OperandFlags::GP_REG, OperandFlags::ADDR64, OperandFlags::empty()]),
+            InstEncoding::new(0x057, false, encoding!(DATA_TRANSFER | MEM32), [OperandFlags::GP_REG, OperandFlags::DISP32 | OperandFlags::INDEX, OperandFlags::empty()]),
+        ]),
+        (Mnemonic::IdivU64, vec![
+            InstEncoding::new(0x057, false, encoding!(DATA_TRANSFER | MEM64), [OperandFlags::GP_REG, OperandFlags::ADDR64, OperandFlags::empty()]),
+            InstEncoding::new(0x057, false, encoding!(DATA_TRANSFER | MEM64), [OperandFlags::GP_REG, OperandFlags::DISP32 | OperandFlags::INDEX, OperandFlags::empty()]),
+        ]),
 
         (Mnemonic::And, vec![
             InstEncoding::new(0x065, false, encoding!(DATA_TRANSFER), [OperandFlags::GP_REG, OperandFlags::GP_REG, OperandFlags::empty()]),
 
             InstEncoding::new(0x066, false, encoding!(DATA_TRANSFER), [OperandFlags::GP_REG, OperandFlags::IMM64, OperandFlags::empty()]),
 
+            InstEncoding::new(0x067, false, encoding!(DATA_TRANSFER | MEM64), [OperandFlags::GP_REG, OperandFlags::ADDR64, OperandFlags::empty()]),
+            InstEncoding::new(0x067, false, encoding!(DATA_TRANSFER | MEM64), [OperandFlags::GP_REG, OperandFlags::DISP32 | OperandFlags::INDEX, OperandFlags::empty()]),
+        ]),
+        (Mnemonic::AndU8, vec![
+            InstEncoding::new(0x067, false, encoding!(DATA_TRANSFER | MEM8), [OperandFlags::GP_REG, OperandFlags::ADDR64, OperandFlags::empty()]),
+            InstEncoding::new(0x067, false, encoding!(DATA_TRANSFER | MEM8), [OperandFlags::GP_REG, OperandFlags::DISP32 | OperandFlags::INDEX, OperandFlags::empty()]),
+        ]),
+        (Mnemonic::AndU16, vec![
+            InstEncoding::new(0x067, false, encoding!(DATA_TRANSFER | MEM16), [OperandFlags::GP_REG, OperandFlags::ADDR64, OperandFlags::empty()]),
+            InstEncoding::new(0x067, false, encoding!(DATA_TRANSFER | MEM16), [OperandFlags::GP_REG, OperandFlags::DISP32 | OperandFlags::INDEX, OperandFlags::empty()]),
+        ]),
+        (Mnemonic::AndU32, vec![
+            InstEncoding::new(0x067, false, encoding!(DATA_TRANSFER | MEM32), [OperandFlags::GP_REG, OperandFlags::ADDR64, OperandFlags::empty()]),
+            InstEncoding::new(0x067, false, encoding!(DATA_TRANSFER | MEM32), [OperandFlags::GP_REG, OperandFlags::DISP32 | OperandFlags::INDEX, OperandFlags::empty()]),
+        ]),
+        (Mnemonic::AndU64, vec![
             InstEncoding::new(0x067, false, encoding!(DATA_TRANSFER | MEM64), [OperandFlags::GP_REG, OperandFlags::ADDR64, OperandFlags::empty()]),
             InstEncoding::new(0x067, false, encoding!(DATA_TRANSFER | MEM64), [OperandFlags::GP_REG, OperandFlags::DISP32 | OperandFlags::INDEX, OperandFlags::empty()]),
         ]),
@@ -296,12 +407,44 @@ static ENCODING_TABLE: LazyLock<[Vec<InstEncoding>; Mnemonic::COUNT]> = LazyLock
             InstEncoding::new(0x077, false, encoding!(DATA_TRANSFER | MEM64), [OperandFlags::GP_REG, OperandFlags::ADDR64, OperandFlags::empty()]),
             InstEncoding::new(0x077, false, encoding!(DATA_TRANSFER | MEM64), [OperandFlags::GP_REG, OperandFlags::DISP32 | OperandFlags::INDEX, OperandFlags::empty()]),
         ]),
+        (Mnemonic::OrU8, vec![
+            InstEncoding::new(0x077, false, encoding!(DATA_TRANSFER | MEM8), [OperandFlags::GP_REG, OperandFlags::ADDR64, OperandFlags::empty()]),
+            InstEncoding::new(0x077, false, encoding!(DATA_TRANSFER | MEM8), [OperandFlags::GP_REG, OperandFlags::DISP32 | OperandFlags::INDEX, OperandFlags::empty()]),
+        ]),
+        (Mnemonic::OrU16, vec![
+            InstEncoding::new(0x077, false, encoding!(DATA_TRANSFER | MEM16), [OperandFlags::GP_REG, OperandFlags::ADDR64, OperandFlags::empty()]),
+            InstEncoding::new(0x077, false, encoding!(DATA_TRANSFER | MEM16), [OperandFlags::GP_REG, OperandFlags::DISP32 | OperandFlags::INDEX, OperandFlags::empty()]),
+        ]),
+        (Mnemonic::OrU32, vec![
+            InstEncoding::new(0x077, false, encoding!(DATA_TRANSFER | MEM32), [OperandFlags::GP_REG, OperandFlags::ADDR64, OperandFlags::empty()]),
+            InstEncoding::new(0x077, false, encoding!(DATA_TRANSFER | MEM32), [OperandFlags::GP_REG, OperandFlags::DISP32 | OperandFlags::INDEX, OperandFlags::empty()]),
+        ]),
+        (Mnemonic::OrU64, vec![
+            InstEncoding::new(0x077, false, encoding!(DATA_TRANSFER | MEM64), [OperandFlags::GP_REG, OperandFlags::ADDR64, OperandFlags::empty()]),
+            InstEncoding::new(0x077, false, encoding!(DATA_TRANSFER | MEM64), [OperandFlags::GP_REG, OperandFlags::DISP32 | OperandFlags::INDEX, OperandFlags::empty()]),
+        ]),
 
         (Mnemonic::Xor, vec![
             InstEncoding::new(0x85, false, encoding!(DATA_TRANSFER), [OperandFlags::GP_REG, OperandFlags::GP_REG, OperandFlags::empty()]),
 
             InstEncoding::new(0x86, false, encoding!(DATA_TRANSFER), [OperandFlags::GP_REG, OperandFlags::IMM64, OperandFlags::empty()]),
 
+            InstEncoding::new(0x87, false, encoding!(DATA_TRANSFER | MEM64), [OperandFlags::GP_REG, OperandFlags::ADDR64, OperandFlags::empty()]),
+            InstEncoding::new(0x87, false, encoding!(DATA_TRANSFER | MEM64), [OperandFlags::GP_REG, OperandFlags::DISP32 | OperandFlags::INDEX, OperandFlags::empty()]),
+        ]),
+        (Mnemonic::XorU8, vec![
+            InstEncoding::new(0x87, false, encoding!(DATA_TRANSFER | MEM8), [OperandFlags::GP_REG, OperandFlags::ADDR64, OperandFlags::empty()]),
+            InstEncoding::new(0x87, false, encoding!(DATA_TRANSFER | MEM8), [OperandFlags::GP_REG, OperandFlags::DISP32 | OperandFlags::INDEX, OperandFlags::empty()]),
+        ]),
+        (Mnemonic::XorU16, vec![
+            InstEncoding::new(0x87, false, encoding!(DATA_TRANSFER | MEM16), [OperandFlags::GP_REG, OperandFlags::ADDR64, OperandFlags::empty()]),
+            InstEncoding::new(0x87, false, encoding!(DATA_TRANSFER | MEM16), [OperandFlags::GP_REG, OperandFlags::DISP32 | OperandFlags::INDEX, OperandFlags::empty()]),
+        ]),
+        (Mnemonic::XorU32, vec![
+            InstEncoding::new(0x87, false, encoding!(DATA_TRANSFER | MEM32), [OperandFlags::GP_REG, OperandFlags::ADDR64, OperandFlags::empty()]),
+            InstEncoding::new(0x87, false, encoding!(DATA_TRANSFER | MEM32), [OperandFlags::GP_REG, OperandFlags::DISP32 | OperandFlags::INDEX, OperandFlags::empty()]),
+        ]),
+        (Mnemonic::XorU64, vec![
             InstEncoding::new(0x87, false, encoding!(DATA_TRANSFER | MEM64), [OperandFlags::GP_REG, OperandFlags::ADDR64, OperandFlags::empty()]),
             InstEncoding::new(0x87, false, encoding!(DATA_TRANSFER | MEM64), [OperandFlags::GP_REG, OperandFlags::DISP32 | OperandFlags::INDEX, OperandFlags::empty()]),
         ]),
@@ -314,12 +457,44 @@ static ENCODING_TABLE: LazyLock<[Vec<InstEncoding>; Mnemonic::COUNT]> = LazyLock
             InstEncoding::new(0x97, false, encoding!(DATA_TRANSFER | MEM64), [OperandFlags::GP_REG, OperandFlags::ADDR64, OperandFlags::empty()]),
             InstEncoding::new(0x97, false, encoding!(DATA_TRANSFER | MEM64), [OperandFlags::GP_REG, OperandFlags::DISP32 | OperandFlags::INDEX, OperandFlags::empty()]),
         ]),
+        (Mnemonic::CmpU8, vec![
+            InstEncoding::new(0x97, false, encoding!(DATA_TRANSFER | MEM8), [OperandFlags::GP_REG, OperandFlags::ADDR64, OperandFlags::empty()]),
+            InstEncoding::new(0x97, false, encoding!(DATA_TRANSFER | MEM8), [OperandFlags::GP_REG, OperandFlags::DISP32 | OperandFlags::INDEX, OperandFlags::empty()]),
+        ]),
+        (Mnemonic::CmpU16, vec![
+            InstEncoding::new(0x97, false, encoding!(DATA_TRANSFER | MEM16), [OperandFlags::GP_REG, OperandFlags::ADDR64, OperandFlags::empty()]),
+            InstEncoding::new(0x97, false, encoding!(DATA_TRANSFER | MEM16), [OperandFlags::GP_REG, OperandFlags::DISP32 | OperandFlags::INDEX, OperandFlags::empty()]),
+        ]),
+        (Mnemonic::CmpU32, vec![
+            InstEncoding::new(0x97, false, encoding!(DATA_TRANSFER | MEM32), [OperandFlags::GP_REG, OperandFlags::ADDR64, OperandFlags::empty()]),
+            InstEncoding::new(0x97, false, encoding!(DATA_TRANSFER | MEM32), [OperandFlags::GP_REG, OperandFlags::DISP32 | OperandFlags::INDEX, OperandFlags::empty()]),
+        ]),
+        (Mnemonic::CmpU64, vec![
+            InstEncoding::new(0x97, false, encoding!(DATA_TRANSFER | MEM64), [OperandFlags::GP_REG, OperandFlags::ADDR64, OperandFlags::empty()]),
+            InstEncoding::new(0x97, false, encoding!(DATA_TRANSFER | MEM64), [OperandFlags::GP_REG, OperandFlags::DISP32 | OperandFlags::INDEX, OperandFlags::empty()]),
+        ]),
 
         (Mnemonic::Test, vec![
             InstEncoding::new(0xa5, false, encoding!(DATA_TRANSFER), [OperandFlags::GP_REG, OperandFlags::GP_REG, OperandFlags::empty()]),
 
             InstEncoding::new(0xa6, false, encoding!(DATA_TRANSFER), [OperandFlags::GP_REG, OperandFlags::IMM64, OperandFlags::empty()]),
 
+            InstEncoding::new(0xa7, false, encoding!(DATA_TRANSFER | MEM64), [OperandFlags::GP_REG, OperandFlags::ADDR64, OperandFlags::empty()]),
+            InstEncoding::new(0xa7, false, encoding!(DATA_TRANSFER | MEM64), [OperandFlags::GP_REG, OperandFlags::DISP32 | OperandFlags::INDEX, OperandFlags::empty()]),
+        ]),
+        (Mnemonic::TestU8, vec![
+            InstEncoding::new(0xa7, false, encoding!(DATA_TRANSFER | MEM8), [OperandFlags::GP_REG, OperandFlags::ADDR64, OperandFlags::empty()]),
+            InstEncoding::new(0xa7, false, encoding!(DATA_TRANSFER | MEM8), [OperandFlags::GP_REG, OperandFlags::DISP32 | OperandFlags::INDEX, OperandFlags::empty()]),
+        ]),
+        (Mnemonic::TestU16, vec![
+            InstEncoding::new(0xa7, false, encoding!(DATA_TRANSFER | MEM16), [OperandFlags::GP_REG, OperandFlags::ADDR64, OperandFlags::empty()]),
+            InstEncoding::new(0xa7, false, encoding!(DATA_TRANSFER | MEM16), [OperandFlags::GP_REG, OperandFlags::DISP32 | OperandFlags::INDEX, OperandFlags::empty()]),
+        ]),
+        (Mnemonic::TestU32, vec![
+            InstEncoding::new(0xa7, false, encoding!(DATA_TRANSFER | MEM32), [OperandFlags::GP_REG, OperandFlags::ADDR64, OperandFlags::empty()]),
+            InstEncoding::new(0xa7, false, encoding!(DATA_TRANSFER | MEM32), [OperandFlags::GP_REG, OperandFlags::DISP32 | OperandFlags::INDEX, OperandFlags::empty()]),
+        ]),
+        (Mnemonic::TestU64, vec![
             InstEncoding::new(0xa7, false, encoding!(DATA_TRANSFER | MEM64), [OperandFlags::GP_REG, OperandFlags::ADDR64, OperandFlags::empty()]),
             InstEncoding::new(0xa7, false, encoding!(DATA_TRANSFER | MEM64), [OperandFlags::GP_REG, OperandFlags::DISP32 | OperandFlags::INDEX, OperandFlags::empty()]),
         ]),

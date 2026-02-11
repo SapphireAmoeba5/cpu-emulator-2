@@ -65,21 +65,25 @@ bool memory_destroy(bus_device* bus) {
 }
 
 bool memory_read_8(bus_device* bus, uint64_t addr, uint64_t* out) {
+    printf("Memory read 8\n");
     memory* mem = (memory*)bus;
     memcpy(out, &mem->data[addr], sizeof(*out));
     return true;
 }
 bool memory_read_4(bus_device* bus, uint64_t addr, uint32_t* out) {
+    printf("Memory read 4\n");
     memory* mem = (memory*)bus;
     memcpy(out, &mem->data[addr], sizeof(*out));
     return true;
 }
 bool memory_read_2(bus_device* bus, uint64_t addr, uint16_t* out) {
+    printf("Memory read 2\n");
     memory* mem = (memory*)bus;
     memcpy(out, &mem->data[addr], sizeof(*out));
     return true;
 }
 bool memory_read_1(bus_device* bus, uint64_t addr, uint8_t* out) {
+    printf("Memory read 1\n");
     memory* mem = (memory*)bus;
     memcpy(out, &mem->data[addr], sizeof(*out));
     return true;
