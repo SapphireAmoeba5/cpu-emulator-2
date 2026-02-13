@@ -7,11 +7,22 @@ set(CMAKE_C_EXTENSIONS OFF)
 
 set(CMAKE_EXPORT_COMPILE_COMMANDS TRUE)
 
+include(CheckIPOSupported)
+check_ipo_supported(RESULT IPO_SUPPORTED OUTPUT IPO_OUTPUT)
+if(IPO_SUPPORTED)
+    message(STATUS "IPO supported: ${IPO_OUTPUT}")
+    set(CMAKE_INTERPROCEDURAL_OPTIMIZATION TRUE)
+else()
+    message(STATUS "IPO not supported: ${IPO_OUTPUT}")
+endif()
+
 # set(CMAKE_CXX_FLAGS, "-Wall")
 
 add_executable(${PROJECT_NAME}
     src/main.c
     src/cpu.c
+    src/decode.c
+    src/execute.c
     # src/memory.c
     src/instructions.c
     src/address_bus.c

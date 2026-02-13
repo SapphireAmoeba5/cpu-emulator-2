@@ -1,7 +1,10 @@
 #include "cpu.h"
+#include "execute.h"
 #include "address_bus.h"
+#include "decode.h"
 #include "instructions.h"
 #include "memory.h"
+#include <__stddef_unreachable.h>
 #include <stdbool.h>
 #include <stdckdint.h>
 #include <stdint.h>
@@ -36,88 +39,49 @@ static instruction_f instructions[256] =
 };
 // clang-format on
 
-// Caches the next BUF_SIZE 8byte words into the instruction buffer
-static void cache_instructions(Cpu* cpu) {
-    // Align to the previous aligned 8byte address
-    uint64_t cached_address = cpu->ip - (cpu->ip % 8);
-    cpu->cached_address = cached_address;
-
-    for (int i = 0; i < BUF_SIZE; i++) {
-        uint64_t address = cached_address + (i * 8);
-        uint64_t value = 0;
-        bool success = addr_bus_read_8(cpu->bus, address, &value);
-        // uint64_t value = memory_read_8(cpu->memory, address);
-        cpu->instruction_buffer[i] = value;
-    }
-}
-
-bool cpu_write_8(Cpu* cpu, uint64_t data, size_t address) {
-    // if (false && address % 8 != 0) {
-    //     printf("CPU fault unaligned write\n");
-    //     return false;
-    // }
-
+bool cpu_write_8(Cpu* cpu, uint64_t data, uint64_t address) {
     return addr_bus_write_8(cpu->bus, address, data);
-    // memory_write_8(cpu->memory, data, address);
 }
-bool cpu_write_4(Cpu* cpu, uint32_t data, size_t address) {
-    if (address % 4 != 0) {
-        printf("CPU fault unaligned write\n");
-        return false;
-    }
-
+bool cpu_write_4(Cpu* cpu, uint32_t data, uint64_t address) {
     return addr_bus_write_4(cpu->bus, address, data);
 }
 
-bool cpu_write_2(Cpu* cpu, uint16_t data, size_t address) {
-    if (address % 2 != 0) {
-        printf("CPU fault unaligned write\n");
-        return false;
-    }
-
+bool cpu_write_2(Cpu* cpu, uint16_t data, uint64_t address) {
     return addr_bus_write_2(cpu->bus, address, data);
 }
 
-bool cpu_write_1(Cpu* cpu, uint8_t data, size_t address) {
+bool cpu_write_1(Cpu* cpu, uint8_t data, uint64_t address) {
     return addr_bus_write_1(cpu->bus, address, data);
 }
 
-bool cpu_read_8(Cpu* cpu, size_t address, uint64_t* value) {
-    if (address % 8 != 0) {
-        printf("CPU fault unaligned read\n");
-        return false;
-    }
-
+bool cpu_read_8(Cpu* cpu, uint64_t address, uint64_t* value) {
     return addr_bus_read_8(cpu->bus, address, value);
 }
 
-bool cpu_read_4(Cpu* cpu, size_t address, uint32_t* value) {
-    if (address % 4 != 0) {
-        printf("CPU fault unaligned read\n");
-        return false;
-    }
-
+bool cpu_read_4(Cpu* cpu, uint64_t address, uint32_t* value) {
     return addr_bus_read_4(cpu->bus, address, value);
 }
 
-bool cpu_read_2(Cpu* cpu, size_t address, uint16_t* value) {
-    if (address % 2 != 0) {
-        printf("CPU fault unaligned read\n");
-        return false;
-    }
-
+bool cpu_read_2(Cpu* cpu, uint64_t address, uint16_t* value) {
     return addr_bus_read_2(cpu->bus, address, value);
 }
 
-bool cpu_read_1(Cpu* cpu, size_t address, uint8_t* value) {
+bool cpu_read_1(Cpu* cpu, uint64_t address, uint8_t* value) {
     return addr_bus_read_1(cpu->bus, address, value);
+}
+
+bool cpu_read_n(Cpu* cpu, uint64_t address, void* out, uint64_t n) {
+    return addr_bus_read_n(cpu->bus, address, out, n);
+}
+bool cpu_read_block(Cpu* cpu, uint64_t address, void* out) {
+    return addr_bus_read_block(cpu->bus, address, out);
 }
 
 void cpu_create(Cpu* cpu, address_bus* bus) {
     memset(cpu, 0, sizeof(Cpu));
 
     cpu->bus = bus;
-    cache_instructions(cpu);
+    cpu->cached_address = 0xffffffffffffffff;
 }
 
 // Does not free the address bus, that is owned by the caller to cpu_create
@@ -126,18 +90,18 @@ void cpu_destroy(Cpu* cpu) {
     return;
 }
 
+
 static void cpu_clock(Cpu* cpu) {
     cpu->clock_count++;
 
-    if (cpu->ip + 16 >= cpu->cached_address + SIZE_BYTES) {
-        cache_instructions(cpu);
+    uint64_t old_ip = cpu->ip;
+    instruction instr;
+    if (!cpu_decode(cpu, &instr)) {
+        cpu->ip = old_ip;
+        return;
     }
 
-    uint64_t offset = cpu->ip - cpu->cached_address;
-    uint8_t* instruction = ((uint8_t*)cpu->instruction_buffer) + offset;
-
-    uint8_t opcode = instruction[0];
-    instructions[opcode](cpu, instruction);
+    cpu_execute(cpu, &instr);
 }
 
 void cpu_run(Cpu* cpu) {
