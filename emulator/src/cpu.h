@@ -1,8 +1,8 @@
 #pragma once
 
 #include "address_bus.h"
-#include <stdint.h>
 #include <stdbool.h>
+#include <stdint.h>
 
 #ifdef NDEBUG
 #define UNREACHABLE() __builtin_unreachable()
@@ -15,7 +15,14 @@
 
 #define BIT(n) 1 << (n)
 
-typedef uint16_t flags_t ;
+typedef enum {
+    NO_ERROR = -1,
+    MEMORY_ERROR,
+    DECODE_ERROR,
+    MATH_ERROR,
+} error_t;
+
+typedef uint16_t flags_t;
 
 constexpr flags_t FLAG_ZERO = BIT(0);
 constexpr flags_t FLAG_CARRY = BIT(1);
@@ -61,11 +68,11 @@ bool cpu_write_1(Cpu* cpu, uint8_t data, uint64_t address);
 /// `value` must not be NULL
 bool cpu_read_8(Cpu* cpu, uint64_t address, uint64_t* value);
 /// `value` must not be NULL
-bool cpu_read_4(Cpu* cpu, uint64_t address,  uint32_t* value);
+bool cpu_read_4(Cpu* cpu, uint64_t address, uint32_t* value);
 /// `value` must not be NULL
-bool cpu_read_2(Cpu* cpu, uint64_t address,  uint16_t* value);
+bool cpu_read_2(Cpu* cpu, uint64_t address, uint16_t* value);
 /// `value` must not be NULL
-bool cpu_read_1(Cpu* cpu, uint64_t address,  uint8_t* value);
+bool cpu_read_1(Cpu* cpu, uint64_t address, uint8_t* value);
 bool cpu_read_n(Cpu* cpu, uint64_t address, void* out, uint64_t n);
 bool cpu_read_block(Cpu* cpu, uint64_t address, void* out);
 

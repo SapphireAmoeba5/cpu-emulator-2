@@ -11,6 +11,15 @@
     printf("TODO: Exceptions\n");                                              \
     exit(1)
 
+typedef enum {
+    PCRel = 0,
+    SPRel = 1,
+    // Base + Index * Scale
+    BIS = 2,
+    Addr = 3,
+
+} addr_mode;
+
 inline static bool cache(Cpu* cpu) {
     cpu->cached_address = cpu->ip - (cpu->ip % BLOCK_SIZE);
     if (!cpu_read_block(cpu, cpu->cached_address, &cpu->cache[0])) {
@@ -20,12 +29,13 @@ inline static bool cache(Cpu* cpu) {
     return true;
 }
 
-inline static bool fetch(Cpu* cpu, uint8_t* byte) {
+// On error returns `MEMORY_ERROR` otherwise returns `NO_ERROR`
+inline static error_t fetch(Cpu* cpu, uint8_t* byte) {
     if (!cpu_read_1(cpu, cpu->ip, byte)) {
-        return false;
+        return MEMORY_ERROR;
     }
     cpu->ip += 1;
-    return true;
+    return NO_ERROR;
     // if (cpu->ip < cpu->cached_address ||
     //     cpu->ip >= cpu->cached_address + BLOCK_SIZE) {
     //     if (!cache(cpu)) {
@@ -43,12 +53,12 @@ inline static bool fetch(Cpu* cpu, uint8_t* byte) {
     // return true;
 }
 
-inline static bool fetch_2(Cpu* cpu, uint16_t* out) {
+inline static error_t fetch_2(Cpu* cpu, uint16_t* out) {
     if (!cpu_read_2(cpu, cpu->ip, out)) {
-        return false;
+        return MEMORY_ERROR;
     }
     cpu->ip += 2;
-    return true;
+    return NO_ERROR;
     //
     // if (cpu->ip < cpu->cached_address) {
     //
@@ -61,34 +71,34 @@ inline static bool fetch_2(Cpu* cpu, uint16_t* out) {
     // return true;
 }
 
-inline static bool fetch_4(Cpu* cpu, uint32_t* out) {
+inline static error_t fetch_4(Cpu* cpu, uint32_t* out) {
     if (!cpu_read_4(cpu, cpu->ip, out)) {
-        return false;
+        return MEMORY_ERROR;
     }
     cpu->ip += 4;
-    return true;
+    return NO_ERROR;
 }
 
-inline static bool fetch_8(Cpu* cpu, uint64_t* out) {
+inline static error_t fetch_8(Cpu* cpu, uint64_t* out) {
     if (!cpu_read_8(cpu, cpu->ip, out)) {
-        return false;
+        return MEMORY_ERROR;
     }
     cpu->ip += 8;
-    return true;
+    return NO_ERROR;
 }
 
 // clang-format off
 iop ops[] = 
 {
-    /* 0x00 */ op_halt, op_int, op_invl, op_invl, op_invl, op_mov, op_mov, op_mov, op_invl, op_invl, op_invl, op_invl, op_invl, op_invl, op_invl, op_invl,
-    /* 0x10 */ op_invl, op_invl, op_invl, op_invl, op_invl, op_add, op_add, op_add, op_invl, op_invl, op_invl, op_invl, op_invl, op_invl, op_invl, op_invl,
-    /* 0x20 */ op_invl, op_invl, op_invl, op_invl, op_invl, op_sub, op_sub, op_sub, op_invl, op_invl, op_invl, op_invl, op_invl, op_invl, op_invl, op_invl,
-    /* 0x30 */ op_invl, op_invl, op_invl, op_invl, op_invl, op_mul, op_mul, op_mul, op_invl, op_invl, op_invl, op_invl, op_invl, op_invl, op_invl, op_invl,
-    /* 0x40 */ op_invl, op_invl, op_invl, op_invl, op_invl, op_div, op_div, op_div, op_invl, op_invl, op_invl, op_invl, op_invl, op_invl, op_invl, op_invl,
-    /* 0x50 */ op_invl, op_invl, op_invl, op_invl, op_invl, op_idiv, op_idiv, op_idiv, op_invl, op_invl, op_invl, op_invl, op_invl, op_invl, op_invl, op_invl,
-    /* 0x60 */ op_invl, op_invl, op_invl, op_invl, op_invl, op_and, op_and, op_and, op_invl, op_invl, op_invl, op_invl, op_invl, op_invl, op_invl, op_invl,
-    /* 0x70 */ op_invl, op_invl, op_invl, op_invl, op_invl, op_or, op_or, op_or, op_invl, op_invl, op_invl, op_invl, op_invl, op_invl, op_invl, op_invl,
-    /* 0x80 */ op_invl, op_invl, op_invl, op_invl, op_invl, op_xor, op_xor, op_xor, op_invl, op_invl, op_invl, op_invl, op_invl, op_invl, op_invl, op_invl,
+    /* 0x00 */ op_halt, op_int, op_invl, op_invl, op_invl, op_mov, op_mov, op_mov, op_invl, op_mov, op_invl, op_invl, op_invl, op_invl, op_invl, op_invl,
+    /* 0x10 */ op_mov, op_mov, op_invl, op_invl, op_invl, op_add, op_add, op_add, op_invl, op_invl, op_invl, op_invl, op_invl, op_invl, op_invl, op_invl,
+    /* 0x20 */ op_mov, op_mov, op_invl, op_invl, op_invl, op_sub, op_sub, op_sub, op_invl, op_invl, op_invl, op_invl, op_invl, op_invl, op_invl, op_invl,
+    /* 0x30 */ op_mov, op_mov, op_invl, op_invl, op_invl, op_mul, op_mul, op_mul, op_invl, op_invl, op_invl, op_invl, op_invl, op_invl, op_invl, op_invl,
+    /* 0x40 */ op_mov, op_mov, op_invl, op_invl, op_invl, op_div, op_div, op_div, op_invl, op_invl, op_invl, op_invl, op_invl, op_invl, op_invl, op_invl,
+    /* 0x50 */ op_mov, op_mov, op_invl, op_invl, op_invl, op_idiv, op_idiv, op_idiv, op_invl, op_invl, op_invl, op_invl, op_invl, op_invl, op_invl, op_invl,
+    /* 0x60 */ op_mov, op_mov, op_invl, op_invl, op_invl, op_and, op_and, op_and, op_invl, op_invl, op_invl, op_invl, op_invl, op_invl, op_invl, op_invl,
+    /* 0x70 */ op_mov, op_mov, op_invl, op_invl, op_invl, op_or, op_or, op_or, op_invl, op_invl, op_invl, op_invl, op_invl, op_invl, op_invl, op_invl,
+    /* 0x80 */ op_mov, op_invl, op_invl, op_invl, op_invl, op_xor, op_xor, op_xor, op_invl, op_invl, op_invl, op_invl, op_invl, op_invl, op_invl, op_invl,
     /* 0x90 */ op_invl, op_invl, op_invl, op_invl, op_invl, op_cmp, op_cmp, op_cmp, op_invl, op_invl, op_invl, op_invl, op_invl, op_invl, op_invl, op_invl,
     /* 0xa0 */ op_invl, op_invl, op_invl, op_invl, op_invl, op_test, op_test, op_test, op_invl, op_invl, op_invl, op_invl, op_invl, op_invl, op_invl, op_invl,
     /* 0xb0 */ op_invl, op_invl, op_invl, op_invl, op_invl, op_invl, op_invl, op_invl, op_invl, op_invl, op_invl, op_invl, op_invl, op_invl, op_invl, op_invl,
@@ -97,85 +107,52 @@ iop ops[] =
     /* 0xe0 */ op_invl, op_invl, op_invl, op_invl, op_invl, op_invl, op_invl, op_invl, op_invl, op_invl, op_invl, op_invl, op_invl, op_invl, op_invl, op_invl,
     /* 0xf0 */ op_invl, op_invl, op_invl, op_invl, op_invl, op_invl, op_invl, op_invl, op_invl, op_invl, op_invl, op_invl, op_invl, op_invl, op_invl, op_invl,
 };
+
+condition conditions[] =
+{
+    /* 0x00 */ cd_true, cd_true, cd_true, cd_true, cd_true, cd_true, cd_true, cd_true, cd_true, cd_true, cd_true, cd_true, cd_true, cd_true, cd_true, cd_true,
+    /* 0x10 */ cd_true, cd_zero, cd_true, cd_true, cd_true, cd_true, cd_true, cd_true, cd_true, cd_true, cd_true, cd_true, cd_true, cd_true, cd_true, cd_true,
+    /* 0x20 */ cd_nzero, cd_carry, cd_true, cd_true, cd_true, cd_true, cd_true, cd_true, cd_true, cd_true, cd_true, cd_true, cd_true, cd_true, cd_true, cd_true,
+    /* 0x30 */ cd_ncarry, cd_overflow, cd_true, cd_true, cd_true, cd_true, cd_true, cd_true, cd_true, cd_true, cd_true, cd_true, cd_true, cd_true, cd_true, cd_true,
+    /* 0x40 */ cd_noverflow, cd_sign, cd_true, cd_true, cd_true, cd_true, cd_true, cd_true, cd_true, cd_true, cd_true, cd_true, cd_true, cd_true, cd_true, cd_true,
+    /* 0x50 */ cd_nsign, cd_above, cd_true, cd_true, cd_true, cd_true, cd_true, cd_true, cd_true, cd_true, cd_true, cd_true, cd_true, cd_true, cd_true, cd_true,
+    /* 0x60 */ cd_be, cd_greater, cd_true, cd_true, cd_true, cd_true, cd_true, cd_true, cd_true, cd_true, cd_true, cd_true, cd_true, cd_true, cd_true, cd_true,
+    /* 0x70 */ cd_le, cd_ge, cd_true, cd_true, cd_true, cd_true, cd_true, cd_true, cd_true, cd_true, cd_true, cd_true, cd_true, cd_true, cd_true, cd_true,
+    /* 0x80 */ cd_less, cd_true, cd_true, cd_true, cd_true, cd_true, cd_true, cd_true, cd_true, cd_true, cd_true, cd_true, cd_true, cd_true, cd_true, cd_true,
+    /* 0x90 */ cd_true, cd_true, cd_true, cd_true, cd_true, cd_true, cd_true, cd_true, cd_true, cd_true, cd_true, cd_true, cd_true, cd_true, cd_true, cd_true,
+    /* 0xa0 */ cd_true, cd_true, cd_true, cd_true, cd_true, cd_true, cd_true, cd_true, cd_true, cd_true, cd_true, cd_true, cd_true, cd_true, cd_true, cd_true,
+    /* 0xb0 */ cd_true, cd_true, cd_true, cd_true, cd_true, cd_true, cd_true, cd_true, cd_true, cd_true, cd_true, cd_true, cd_true, cd_true, cd_true, cd_true,
+    /* 0xc0 */ cd_true, cd_true, cd_true, cd_true, cd_true, cd_true, cd_true, cd_true, cd_true, cd_true, cd_true, cd_true, cd_true, cd_true, cd_true, cd_true,
+    /* 0xd0 */ cd_true, cd_true, cd_true, cd_true, cd_true, cd_true, cd_true, cd_true, cd_true, cd_true, cd_true, cd_true, cd_true, cd_true, cd_true, cd_true,
+    /* 0xe0 */ cd_true, cd_true, cd_true, cd_true, cd_true, cd_true, cd_true, cd_true, cd_true, cd_true, cd_true, cd_true, cd_true, cd_true, cd_true, cd_true,
+    /* 0xf0 */ cd_true, cd_true, cd_true, cd_true, cd_true, cd_true, cd_true, cd_true, cd_true, cd_true, cd_true, cd_true, cd_true, cd_true, cd_true, cd_true,
+};
+
 // clang-format on
 
-// Return the opcode's operation
-static inline iop get_op(uint8_t opcode) {
-    switch (opcode) {
-    case 0x00:
-        return op_halt;
-    case 0x01:
-        return op_int;
-    case 0x05:
-    case 0x06:
-    case 0x07:
-        return op_mov;
-    case 0x15:
-    case 0x16:
-    case 0x17:
-        return op_add;
-    case 0x25:
-    case 0x26:
-    case 0x27:
-        return op_sub;
-    case 0x35:
-    case 0x36:
-    case 0x37:
-        return op_mul;
-    case 0x45:
-    case 0x46:
-    case 0x47:
-        return op_div;
-    case 0x55:
-    case 0x56:
-    case 0x57:
-        return op_idiv;
-    case 0x65:
-    case 0x66:
-    case 0x67:
-        return op_and;
-    case 0x75:
-    case 0x76:
-    case 0x77:
-        return op_or;
-    case 0x85:
-    case 0x86:
-    case 0x87:
-        return op_xor;
-    case 0x95:
-    case 0x96:
-    case 0x97:
-        return op_cmp;
-    case 0xa5:
-    case 0xa6:
-    case 0xa7:
-        return op_test;
-
-    default:
-        return op_invl;
-    }
+/// Same as `get_op` but implemented with a lookup table
+static inline iop
+get_op2(uint8_t opcode) {
+    return ops[opcode];
 }
 
-/// Same as `get_op` but implemented with a lookup table
-static inline iop get_op2(uint8_t opcode) { return ops[opcode]; }
-
-inline static bool decode_reg_operand(Cpu* cpu, instruction* instr) {
+inline static error_t decode_reg_operand(Cpu* cpu, instruction* instr) {
     uint8_t transfer_byte;
-    if (!fetch(cpu, &transfer_byte)) {
-        return false;
+    if (fetch(cpu, &transfer_byte) != NO_ERROR) {
+        return MEMORY_ERROR;
     }
     uint8_t src = transfer_byte & 0x0f;
     uint8_t dest = (transfer_byte >> 4) & 0x0f;
 
     instr->dest = &cpu->registers[dest].r;
-    instr->src = cpu->registers[src].r;
-    return true;
+    instr->src_reg_id = src;
+    return NO_ERROR;
 }
 
-inline static bool decode_imm_operand(Cpu* cpu, instruction* instr) {
+inline static error_t decode_imm_operand(Cpu* cpu, instruction* instr) {
     uint8_t transfer_byte;
-    if (!fetch(cpu, &transfer_byte)) {
-        return false;
+    if (fetch(cpu, &transfer_byte) != NO_ERROR) {
+        return MEMORY_ERROR;
     }
 
     uint8_t dest = (transfer_byte >> 4) & 0x0f;
@@ -185,36 +162,176 @@ inline static bool decode_imm_operand(Cpu* cpu, instruction* instr) {
 
     switch (size) {
     case 0:
-        return fetch(cpu, (uint8_t*)&instr->src);
+        return fetch(cpu, (uint8_t*)&instr->immediate);
     case 1:
-        return fetch_2(cpu, (uint16_t*)&instr->src);
+        return fetch_2(cpu, (uint16_t*)&instr->immediate);
     case 2:
-        return fetch_4(cpu, (uint32_t*)&instr->src);
+        return fetch_4(cpu, (uint32_t*)&instr->immediate);
     case 3:
-        return fetch_8(cpu, (uint64_t*)&instr->src);
+        return fetch_8(cpu, (uint64_t*)&instr->immediate);
     default:
         UNREACHABLE();
     }
 }
 
-bool cpu_decode(Cpu* cpu, instruction* instr) {
-    memset(instr, 0, sizeof(*instr));
-    uint8_t opcode;
-    if (!fetch(cpu, &opcode)) {
-        return false;
+inline static error_t decode_sp_rel_addr(Cpu* cpu, instruction* instr) {
+    uint8_t byte;
+    if (fetch(cpu, &byte) != NO_ERROR) {
+        return MEMORY_ERROR;
     }
 
-    printf("OPCODE: %d\n", opcode);
+    uint8_t scale = 1 << ((byte >> 2) & 0x03);
+
+    uint8_t ignore_bit = byte & 1;
+    uint8_t disp_width = (byte >> 1) & 1;
+
+    instr->base_id = SP_ID;
+    instr->index_id = INVALID_ID;
+    instr->scale = scale;
+
+    if (!ignore_bit) {
+        uint8_t index_reg = (byte >> 4) & 0x0f;
+        instr->index_id = index_reg;
+    }
+
+    if (disp_width == 0) {
+        int32_t tmp = 0;
+        if (fetch_4(cpu, (uint32_t*)&tmp) != NO_ERROR) {
+            return MEMORY_ERROR;
+        }
+        instr->displacement = (int64_t)tmp;
+    } else {
+        int16_t tmp = 0;
+        if (fetch_2(cpu, (uint16_t*)&tmp) != NO_ERROR) {
+            return MEMORY_ERROR;
+        }
+        instr->displacement = (int64_t)tmp;
+    }
+
+    return NO_ERROR;
+}
+
+inline static error_t decode_bis_address(Cpu* cpu, instruction* instr) {
+    uint8_t byte;
+    if (fetch(cpu, &byte) != NO_ERROR) {
+        return MEMORY_ERROR;
+    }
+
+    uint8_t scale = 1 << ((byte >> 2) & 0x03);
+
+    uint8_t ignore_bit = byte & 1;
+    uint8_t disp_width = (byte >> 1) & 1;
+
+    instr->base_id = INVALID_ID;
+    instr->index_id = INVALID_ID;
+    instr->scale = scale;
+
+    if (!ignore_bit) {
+        uint8_t base_reg = (byte >> 4) & 0b1111;
+        instr->base_id = base_reg;
+    } else {
+        uint8_t second_byte;
+        if (fetch(cpu, &second_byte) != NO_ERROR) {
+            return MEMORY_ERROR;
+        }
+        instr->base_id = (second_byte >> 4) & 0b1111;
+        instr->index_id = second_byte & 0b1111;
+    }
+
+    if (disp_width == 0) {
+        int32_t tmp = 0;
+        if (fetch_4(cpu, (uint32_t*)&tmp) != NO_ERROR) {
+            return MEMORY_ERROR;
+        }
+        instr->displacement = (int64_t)tmp;
+    } else {
+        int16_t tmp = 0;
+        if (fetch_2(cpu, (uint16_t*)&tmp) != NO_ERROR) {
+            return MEMORY_ERROR;
+        }
+        instr->displacement = (int64_t)tmp;
+    }
+
+    return NO_ERROR;
+}
+
+inline static error_t decode_pc_rel(Cpu* cpu, instruction* instr) {
+    // The PC relative displacement is constant so we can set both registers
+    // to be invalid here
+    instr->index_id = INVALID_ID;
+    instr->base_id = INVALID_ID;
+    instr->scale = 1;
+    int32_t off = 0;
+    if (fetch_4(cpu, (uint32_t*)&off) != NO_ERROR) {
+        return MEMORY_ERROR;
+    }
+    // Encode this as a displacement because the address from this is
+    // effectively a constant
+    instr->displacement = (int64_t)cpu->ip + (int64_t)off;
+    return NO_ERROR;
+}
+
+inline static error_t decode_mem_operand(Cpu* cpu, instruction* instr) {
+    uint8_t byte;
+    if (fetch(cpu, &byte) != NO_ERROR) {
+        return MEMORY_ERROR;
+    }
+    int dest = (byte >> 4) & 0x0f;
+    addr_mode mode = (byte >> 2) & 0x03;
+    int size = byte & 0x03;
+    instr->size = size;
+    instr->dest = &cpu->registers[dest].r;
+
+    switch (mode) {
+    case PCRel:
+        return decode_pc_rel(cpu, instr);
+    case BIS:
+        return decode_bis_address(cpu, instr);
+    case SPRel:
+        return decode_sp_rel_addr(cpu, instr);
+    case Addr:
+        instr->index_id = INVALID_ID;
+        instr->base_id = INVALID_ID;
+        instr->scale = 1;
+        return fetch_8(cpu, &instr->displacement);
+    }
+}
+
+error_t cpu_decode(Cpu* cpu, instruction* instr) {
+    memset(instr, 0, sizeof(*instr));
+    uint8_t opcode;
+    if (fetch(cpu, &opcode) != NO_ERROR) {
+        return MEMORY_ERROR;
+    }
 
     instr->op = get_op2(opcode);
+    instr->cond = conditions[opcode];
     switch (opcode) {
     case 0x00:
-        return true;
+        // There is no further decoding for these opcodes
+        return NO_ERROR;
     case 0x01:
-        if (!fetch(cpu, (uint8_t*)&instr->src)) {
-            return false;
-        }
-        return true;
+        instr->op_src = op_src_immediate;
+        return fetch(cpu, (uint8_t*)&instr->immediate);
+    case 0x10:
+    case 0x11:
+    case 0x20:
+    case 0x21:
+    case 0x30:
+    case 0x31:
+    case 0x40:
+    case 0x41:
+    case 0x50:
+    case 0x51:
+    case 0x60:
+    case 0x61:
+    case 0x70:
+    case 0x71:
+    case 0x80:
+        instr->op_src = op_src_calculate_address;
+        instr->dest = &cpu->ip;
+        return decode_pc_rel(cpu, instr);
+
     case 0x05:
     case 0x15:
     case 0x25:
@@ -226,11 +343,8 @@ bool cpu_decode(Cpu* cpu, instruction* instr) {
     case 0x85:
     case 0x95:
     case 0xa5:
-        if (!decode_reg_operand(cpu, instr)) {
-            return false;
-        }
-        return true;
-
+        instr->op_src = op_src_dereference_reg;
+        return decode_reg_operand(cpu, instr);
     case 0x06:
     case 0x16:
     case 0x26:
@@ -242,12 +356,32 @@ bool cpu_decode(Cpu* cpu, instruction* instr) {
     case 0x86:
     case 0x96:
     case 0xa6:
-        if (!decode_imm_operand(cpu, instr)) {
-            return false;
+        instr->op_src = op_src_immediate;
+        return decode_imm_operand(cpu, instr);
+    case 0x07:
+    case 0x17:
+    case 0x27:
+    case 0x37:
+    case 0x47:
+    case 0x57:
+    case 0x67:
+    case 0x77:
+    case 0x87:
+    case 0x97:
+    case 0xa7: {
+        instr->op_src = op_src_dereference_mem;
+        error_t err = decode_mem_operand(cpu, instr);
+        if (err != NO_ERROR) {
+            return err;
         }
-        return true;
+        return NO_ERROR;
+    }
+
+    case 0x09:
+        instr->op_src = op_src_calculate_address;
+        return decode_mem_operand(cpu, instr);
 
     default:
-        return false;
+        return DECODE_ERROR;
     }
 }

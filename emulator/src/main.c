@@ -69,8 +69,6 @@ int main(void) {
         memory_write_1((bus_device*)mem, i, program[i]);
     }
 
-    addr_bus_pretty_print(&bus);
-
     Cpu cpu;
     cpu_create(&cpu, &bus);
     auto start = clock();

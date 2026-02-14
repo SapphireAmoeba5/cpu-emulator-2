@@ -23,6 +23,7 @@ add_executable(${PROJECT_NAME}
     src/cpu.c
     src/decode.c
     src/execute.c
+    src/instruction_cache.c
     # src/memory.c
     src/instructions.c
     src/address_bus.c

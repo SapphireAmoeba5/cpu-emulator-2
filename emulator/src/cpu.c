@@ -96,12 +96,18 @@ static void cpu_clock(Cpu* cpu) {
 
     uint64_t old_ip = cpu->ip;
     instruction instr;
-    if (!cpu_decode(cpu, &instr)) {
+    error_t err = cpu_decode(cpu, &instr);
+    if (err != NO_ERROR) {
+        printf("ERROR DECODING: %d\n", err);
         cpu->ip = old_ip;
+        cpu->exit = true;
         return;
     }
 
-    cpu_execute(cpu, &instr);
+    err = cpu_execute(cpu, &instr);
+    if(err != NO_ERROR) {
+        printf("Execution error: %d\n", err);
+    }
 }
 
 void cpu_run(Cpu* cpu) {
