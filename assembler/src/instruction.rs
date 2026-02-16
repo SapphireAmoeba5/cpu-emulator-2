@@ -94,6 +94,9 @@ pub enum Mnemonic {
     TestU32,
     TestU64,
 
+    Push,
+    Pop,
+
     Jmp,
 
     Jnz,

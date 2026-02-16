@@ -442,6 +442,10 @@ impl<'a> TokenIter<'a> {
             "test.u16" | "testq" => Some(Mnemonic::TestU16),
             "test.u32" | "testh" => Some(Mnemonic::TestU32),
             "test.u64" => Some(Mnemonic::TestU64),
+
+            "push" => Some(Mnemonic::Push),
+            "pop" => Some(Mnemonic::Pop),
+
             "jmp" => Some(Mnemonic::Jmp),
 
             "jz" | "je" => Some(Mnemonic::Jz),

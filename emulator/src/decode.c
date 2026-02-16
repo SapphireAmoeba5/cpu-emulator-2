@@ -74,8 +74,8 @@ iop ops[] =
     /* 0xa0 */ op_invl, op_invl, op_invl, op_invl, op_invl, op_test, op_test, op_test, op_invl, op_invl, op_invl, op_invl, op_invl, op_invl, op_invl, op_invl,
     /* 0xb0 */ op_invl, op_invl, op_invl, op_invl, op_invl, op_invl, op_invl, op_invl, op_invl, op_invl, op_invl, op_invl, op_invl, op_invl, op_invl, op_invl,
     /* 0xc0 */ op_invl, op_invl, op_invl, op_invl, op_invl, op_invl, op_invl, op_invl, op_invl, op_invl, op_invl, op_invl, op_invl, op_invl, op_invl, op_invl,
-    /* 0xd0 */ op_invl, op_invl, op_invl, op_invl, op_invl, op_invl, op_invl, op_invl, op_invl, op_invl, op_invl, op_invl, op_invl, op_invl, op_invl, op_invl,
-    /* 0xe0 */ op_invl, op_invl, op_invl, op_invl, op_invl, op_invl, op_invl, op_invl, op_invl, op_invl, op_invl, op_invl, op_invl, op_invl, op_invl, op_invl,
+    /* 0xd0 */ op_push, op_push, op_push, op_push, op_push, op_push, op_push, op_push, op_push, op_push, op_push, op_push, op_push, op_push, op_push, op_push,
+    /* 0xe0 */ op_pop, op_pop, op_pop, op_pop, op_pop, op_pop, op_pop, op_pop, op_pop, op_pop, op_pop, op_pop, op_pop, op_pop, op_pop, op_pop,
     /* 0xf0 */ op_rdt, op_rdt, op_rdt, op_rdt, op_rdt, op_rdt, op_rdt, op_rdt, op_rdt, op_rdt, op_rdt, op_rdt, op_rdt, op_rdt, op_rdt, op_rdt,
 };
 
@@ -328,9 +328,15 @@ error_t cpu_decode(Cpu* cpu, instruction* instr, bool* branch_point) {
         instr->cond = conditions[opcode];
     }
 
+    // PUSH and POP instruction respecively
+    if (opcode >= 0xd0 && opcode <= 0xdf || opcode >= 0xe0 && opcode <= 0xef) {
+        uint8_t reg_id = opcode & 0x0f;
+        instr->dest = &cpu->registers[reg_id].r;
+        return NO_ERROR;
+    }
     // RDT (read timer) instructions (encoded with the lowest 4 bits of the
     // operand)
-    if (opcode >= 0xf0 && opcode <= 0xff) {
+    else if (opcode >= 0xf0 && opcode <= 0xff) {
         instr->op_src = op_src_immediate;
         uint8_t reg_id = opcode & 0x0f;
         instr->dest = &cpu->registers[reg_id].r;

@@ -19,6 +19,8 @@ typedef enum {
     op_xor,
     op_cmp,
     op_test,
+    op_push,
+    op_pop,
     op_rdt,
     op_call,
     op_ret,

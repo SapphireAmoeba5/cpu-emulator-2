@@ -392,6 +392,20 @@ static error_t handle_ret(Cpu* cpu, instruction* instr, uint64_t src) {
     return NO_ERROR;
 }
 
+static error_t handle_push(Cpu* cpu, instruction* instr, uint64_t src) {
+    if(!cpu_push(cpu, *instr->src)) {
+        return MEMORY_ERROR;
+    }
+    return NO_ERROR;
+}
+
+static error_t handle_pop(Cpu* cpu, instruction* instr, uint64_t src) {
+    if(!cpu_pop(cpu, instr->dest)) {
+        return MEMORY_ERROR;
+    }
+    return NO_ERROR;
+}
+
 error_t (*op_handlers[op_LENGTH])(Cpu* cpu, instruction* instr,
                                   uint64_t src) = {
     [op_invl] = handle_invl, [op_halt] = handle_halt, [op_int] = handle_int,
@@ -400,6 +414,8 @@ error_t (*op_handlers[op_LENGTH])(Cpu* cpu, instruction* instr,
     [op_idiv] = handle_idiv, [op_and] = handle_and,   [op_or] = handle_or,
     [op_xor] = handle_xor,   [op_cmp] = handle_cmp,   [op_test] = handle_test,
     [op_rdt] = handle_rdt,   [op_call] = handle_call, [op_ret] = handle_ret,
+        [op_push] = handle_push,
+        [op_pop] = handle_pop
 };
 
 error_t cpu_execute(Cpu* cpu, instruction* instr) {
