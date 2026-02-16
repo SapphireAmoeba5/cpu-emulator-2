@@ -45,6 +45,7 @@ add_executable(${PROJECT_NAME}
     src/decode.c
     src/execute.c
     src/instruction_cache.c
+    src/block.c
     # src/memory.c
     src/address_bus.c
     src/bus_device.c

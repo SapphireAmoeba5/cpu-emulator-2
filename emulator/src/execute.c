@@ -7,7 +7,7 @@
 #include <stdlib.h>
 #include <time.h>
 
-#define LOOKUP_TABLE_IMPL
+// #define LOOKUP_TABLE_IMPL
 
 static void intpt(Cpu* cpu, int index) {
     if (index == 0x80) {
@@ -393,14 +393,14 @@ static error_t handle_ret(Cpu* cpu, instruction* instr, uint64_t src) {
 }
 
 static error_t handle_push(Cpu* cpu, instruction* instr, uint64_t src) {
-    if(!cpu_push(cpu, *instr->src)) {
+    if (!cpu_push(cpu, *instr->src)) {
         return MEMORY_ERROR;
     }
     return NO_ERROR;
 }
 
 static error_t handle_pop(Cpu* cpu, instruction* instr, uint64_t src) {
-    if(!cpu_pop(cpu, instr->dest)) {
+    if (!cpu_pop(cpu, instr->dest)) {
         return MEMORY_ERROR;
     }
     return NO_ERROR;
@@ -414,9 +414,7 @@ error_t (*op_handlers[op_LENGTH])(Cpu* cpu, instruction* instr,
     [op_idiv] = handle_idiv, [op_and] = handle_and,   [op_or] = handle_or,
     [op_xor] = handle_xor,   [op_cmp] = handle_cmp,   [op_test] = handle_test,
     [op_rdt] = handle_rdt,   [op_call] = handle_call, [op_ret] = handle_ret,
-        [op_push] = handle_push,
-        [op_pop] = handle_pop
-};
+    [op_push] = handle_push, [op_pop] = handle_pop};
 
 error_t cpu_execute(Cpu* cpu, instruction* instr) {
     uint64_t src = 0;
@@ -475,6 +473,10 @@ error_t cpu_execute(Cpu* cpu, instruction* instr) {
         return handle_cmp(cpu, instr, src);
     case op_test:
         return handle_test(cpu, instr, src);
+    case op_push:
+        return handle_push(cpu, instr, src);
+    case op_pop:
+        return handle_pop(cpu, instr, src);
     case op_rdt:
         return handle_rdt(cpu, instr, src);
     case op_call:

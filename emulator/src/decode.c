@@ -361,7 +361,7 @@ error_t cpu_decode(Cpu* cpu, instruction* instr, bool* branch_point) {
 
     switch (opcode) {
     case 0x00:
-    case 0x13:
+    case 0x13: // RET instruction
         // These instructions are usually have some special operation and don't
         // need anything else to be modified
         *branch_point = true;

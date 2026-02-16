@@ -16,7 +16,7 @@
 #endif
 
 // Maximum amount of instructions to cache if there were no branch points
-constexpr uint64_t MAX_CACHE_BLOCK = 32;
+constexpr uint64_t MAX_CACHE_BLOCK = 128;
 
 constexpr uint64_t CLOCK_HZ = 500000000;
 

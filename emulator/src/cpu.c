@@ -86,7 +86,8 @@ void cpu_run(Cpu* cpu) {
             // TODO: Check if it is faster to always cache up to the maximum
             // cache size, ignoring branches and manually check in the execution
             // loop if the IP has been modified.
-            // This could potentially lower the overhead of caches since we won't need
+            // This could potentially lower the overhead of caches since we
+            // won't need
             bool branches = false;
 
             uint64_t block_start = cpu->registers[IP_INDEX].r;
@@ -105,20 +106,26 @@ void cpu_run(Cpu* cpu) {
                 instr.instruction_size = size;
                 instruction_buf_append(buf, &instr);
             }
+
             cpu->registers[IP_INDEX].r = block_start;
         }
 
-        uint32_t i = 0;
-        while (i < buf->len && !cpu->halt && !cpu->exit) {
-            cpu->clock_count++;
-            instruction* instr = &buf->instructions[i];
-            cpu->registers[IP_INDEX].r += instr->instruction_size;
-            error_t err = cpu_execute(cpu, instr);
-            if (err != NO_ERROR) {
-                printf("ERROR EXECUTING %d\n", err);
-                abort();
+        uint64_t block_start = cpu->registers[IP_INDEX].r;
+        // Don't do a cache lookup while we are still executing the same block
+        // of code
+        while (cpu->registers[IP_INDEX].r == block_start) {
+            uint32_t i = 0;
+            while (i < buf->len && !cpu->halt && !cpu->exit) {
+                cpu->clock_count++;
+                instruction* instr = &buf->instructions[i];
+                cpu->registers[IP_INDEX].r += instr->instruction_size;
+                error_t err = cpu_execute(cpu, instr);
+                if (err != NO_ERROR) {
+                    printf("ERROR EXECUTING %d\n", err);
+                    abort();
+                }
+                i++;
             }
-            i++;
         }
     }
 }

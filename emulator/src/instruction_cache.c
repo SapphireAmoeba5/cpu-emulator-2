@@ -1,6 +1,5 @@
 #include "instruction_cache.h"
 #include "cpu.h"
-#include "instruction.h"
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -10,30 +9,9 @@ typedef XXH64_hash_t hash_t;
 
 constexpr XXH64_hash_t SEED = 992893;
 
-static void resize(block* buf) {
-    uint32_t new_cap = (buf->cap + 1) * 2;
-    buf->cap = new_cap;
-
-    instruction* instr = realloc(buf->instructions, new_cap * sizeof(instruction));
-    buf->instructions = instr;
-}
-
-block instruction_buf_create(uint32_t cap) {
-    block buf = {0};
-    return buf;
-}
-
-void instruction_buf_append(block* buf, instruction* instr) {
-    if (buf->len >= buf->cap) {
-        resize(buf);
-    }
-
-    buf->instructions[buf->len++] = *instr;
-}
-
 instruction_cache instr_cache_create() {
     instruction_cache cache = {0};
-    cache.cap = 128;
+    cache.cap = 1 << 10;
     cache.buckets = calloc(1, cache.cap * (sizeof(*cache.buckets)));
     return cache;
 }
@@ -46,14 +24,15 @@ bucket_entry* add_new_entry_to_bucket(bucket* bucket, uint64_t key) {
 
     bucket_entry* entry = &bucket->entries[bucket->len++];
     entry->key = key;
-    memset(&entry->buf, 0, sizeof(entry->buf));
-    entry->buf.cap = MAX_CACHE_BLOCK;
-    entry->buf.instructions = malloc(MAX_CACHE_BLOCK * sizeof(instruction));
+    entry->buf = instruction_buf_create(MAX_CACHE_BLOCK);
     return entry;
 }
 
-static uint64_t get_index(uint64_t key, uint64_t cap) {
-    return XXH64(&key, sizeof(key), SEED) % cap;
+static inline uint64_t get_index(uint64_t key, uint64_t cap) {
+    uint64_t index = key & (cap - 1);
+    // uint64_t index =  XXH64(&key, sizeof(key), SEED) & (cap - 1);
+    
+    return index;
 }
 
 block* instr_cache_get(instruction_cache* cache, uint64_t address) {
