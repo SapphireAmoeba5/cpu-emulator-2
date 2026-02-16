@@ -1,8 +1,8 @@
 #include "cpu.h"
-#include "execute.h"
 #include "address_bus.h"
 #include "decode.h"
-#include "instructions.h"
+#include "execute.h"
+#include "instruction_cache.h"
 #include "memory.h"
 #include <__stddef_unreachable.h>
 #include <stdbool.h>
@@ -12,32 +12,6 @@
 #include <stdlib.h>
 #include <string.h>
 #include <time.h>
-
-#define TABLE_IMPL
-
-typedef void (*instruction_f)(Cpu* cpu, uint8_t instruction[16]);
-
-// clang-format off
-static instruction_f instructions[256] = 
-{
-    /* 0x00 */ halt, intpt, invl, invl, invl, mov_reg, mov_imm, mov_mem, str, lea, invl, invl, invl, invl, invl, invl,
-    /* 0x10 */ jmp,  jz,   invl, invl, invl, add_reg, add_imm, add_mem, invl, invl, invl, invl, invl, invl, invl, invl,
-    /* 0x20 */ jnz,  jc,  invl, invl, invl, sub_reg, sub_imm, sub_mem, invl, invl, invl, invl, invl, invl, invl, invl,
-    /* 0x30 */ jnc, jo,  invl, invl, invl, mul_reg, mul_imm, mul_mem, invl, invl, invl, invl, invl, invl, invl, invl,
-    /* 0x40 */ jno, js,  invl, invl, invl, div_reg,  div_imm, div_mem, invl, invl, invl, invl, invl, invl, invl, invl,
-    /* 0x50 */ jns, ja,  invl, invl, invl, idiv_reg, idiv_imm, idiv_mem, invl, invl, invl, invl, invl, invl, invl, invl,
-    /* 0x60 */ jbe, jg,  invl, invl, invl, and_reg, and_imm, and_mem, invl, invl, invl, invl, invl, invl, invl, invl,
-    /* 0x70 */ jle, jge,  invl, invl, invl, or_reg, or_imm, or_mem, invl, invl, invl, invl, invl, invl, invl, invl,
-    /* 0x80 */ jl, invl,  invl, invl, invl, xor_reg, xor_imm, xor_mem, invl, invl, invl, invl, invl, invl, invl, invl,
-    /* 0x90 */ invl, invl,  invl, invl, invl, cmp_reg, cmp_imm, cmp_mem, invl, invl, invl, invl, invl, invl, invl, invl,
-    /* 0xa0 */ invl, invl,  invl, invl, invl, test_reg, test_imm, test_mem, invl, invl, invl, invl, invl, invl, invl, invl,
-    /* 0xb0 */ invl, invl,  invl, invl, invl, invl, invl, invl, invl, invl, invl, invl, invl, invl, invl, invl,
-    /* 0xc0 */ invl, invl,  invl, invl, invl, invl, invl, invl, invl, invl, invl, invl, invl, invl, invl, invl,
-    /* 0xd0 */ invl, invl,  invl, invl, invl, invl, invl, invl, invl, invl, invl, invl, invl, invl, invl, invl,
-    /* 0xe0 */ invl, invl,  invl, invl, invl, invl, invl, invl, invl, invl, invl, invl, invl, invl, invl, invl,
-    /* 0xf0 */ invl, invl,  invl, invl, invl, invl, invl, invl, invl, invl, invl, invl, invl, invl, invl, invl,
-};
-// clang-format on
 
 bool cpu_write_8(Cpu* cpu, uint64_t data, uint64_t address) {
     return addr_bus_write_8(cpu->bus, address, data);
@@ -77,43 +51,70 @@ bool cpu_read_block(Cpu* cpu, uint64_t address, void* out) {
     return addr_bus_read_block(cpu->bus, address, out);
 }
 
+bool cpu_push(Cpu* cpu, uint64_t value) {
+    cpu->registers[SP_INDEX].r -= 8;
+    return cpu_write_8(cpu, value, cpu->registers[SP_INDEX].r);
+}
+
+bool cpu_pop(Cpu* cpu, uint64_t* out) {
+    if(!cpu_read_8(cpu, cpu->registers[SP_INDEX].r, out)) {
+        return false;
+    }
+    cpu->registers[SP_INDEX].r += 8;
+    return true;
+}
+
 void cpu_create(Cpu* cpu, address_bus* bus) {
     memset(cpu, 0, sizeof(Cpu));
 
+    cpu->cache = instr_cache_create();
     cpu->bus = bus;
-    cpu->cached_address = 0xffffffffffffffff;
+    timer_start(&cpu->timer);
 }
 
 // Does not free the address bus, that is owned by the caller to cpu_create
 void cpu_destroy(Cpu* cpu) {
-    // So far nothing
+    // TODO: Free the instruction cache
     return;
-}
-
-
-static void cpu_clock(Cpu* cpu) {
-    cpu->clock_count++;
-
-    uint64_t old_ip = cpu->ip;
-    instruction instr;
-    error_t err = cpu_decode(cpu, &instr);
-    if (err != NO_ERROR) {
-        printf("ERROR DECODING: %d\n", err);
-        cpu->ip = old_ip;
-        cpu->exit = true;
-        return;
-    }
-
-    err = cpu_execute(cpu, &instr);
-    if(err != NO_ERROR) {
-        printf("Execution error: %d\n", err);
-    }
 }
 
 void cpu_run(Cpu* cpu) {
     while (!cpu->exit) {
-        if (!cpu->halt) {
-            cpu_clock(cpu);
+        block* buf = instr_cache_get(&cpu->cache, cpu->registers[IP_INDEX].r);
+
+        if (buf->len == 0) {
+            bool branches = false;
+
+            uint64_t block_start = cpu->registers[IP_INDEX].r;
+            while (!branches && buf->len < MAX_CACHE_BLOCK) {
+                uint64_t start = cpu->registers[IP_INDEX].r;
+                instruction instr;
+                error_t err = cpu_decode(cpu, &instr, &branches);
+                if (err != NO_ERROR) {
+                    if (buf->len == 0) {
+                        printf("Cache error: %d\n", err);
+                        cpu->exit = true;
+                    }
+                    break;
+                }
+                uint64_t size = cpu->registers[IP_INDEX].r - start;
+                instr.instruction_size = size;
+                instruction_buf_append(buf, &instr);
+            }
+            cpu->registers[IP_INDEX].r = block_start;
+        }
+
+        uint32_t i = 0;
+        while (i < buf->len && !cpu->halt && !cpu->exit) {
+            cpu->clock_count++;
+            instruction* instr = &buf->instructions[i];
+            cpu->registers[IP_INDEX].r += instr->instruction_size;
+            error_t err = cpu_execute(cpu, instr);
+            if (err != NO_ERROR) {
+                printf("ERROR EXECUTING %d\n", err);
+                abort();
+            }
+            i++;
         }
     }
 }

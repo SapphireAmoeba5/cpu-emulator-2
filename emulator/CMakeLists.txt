@@ -25,12 +25,17 @@ add_executable(${PROJECT_NAME}
     src/execute.c
     src/instruction_cache.c
     # src/memory.c
-    src/instructions.c
     src/address_bus.c
     src/bus_device.c
     src/devices/memory.c
+    # TODO: Platform specific check
+    src/platform/linux/timer.c
+    xxhash/xxhash.c
 )
 
 target_include_directories(${PROJECT_NAME} PUBLIC
     src/
+    xxhash/
+    # TODO: Platform specific check
+    src/platform/linux
 )

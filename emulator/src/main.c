@@ -9,6 +9,7 @@
 #include "cpu.h"
 #include "devices/memory.h"
 #include "memory.h"
+#include "timer.h"
 
 /// Reads the file at PATH, and returns an allocated bufer and writes the length
 /// of the buffer to the pointer referenced by `length`
@@ -71,12 +72,12 @@ int main(void) {
 
     Cpu cpu;
     cpu_create(&cpu, &bus);
-    auto start = clock();
+    timer timer;
+    timer_start(&timer);
     cpu_run(&cpu);
-    auto end = clock();
-    double duration = (double)(end - start) / CLOCKS_PER_SEC;
+    double elapsed = timer_elapsed_seconds(&timer);
 
-    printf("Time taken: %f\n", duration);
+    printf("Time taken: %f\n", elapsed);
 
     cpu_destroy(&cpu);
 

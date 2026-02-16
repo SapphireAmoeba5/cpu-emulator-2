@@ -66,7 +66,7 @@ bitflags! {
         const DISP32 = bit!(10);
         const DISP = flags!(DISP32);
         // const DISP = Self::DISP32.bits();
-        
+
         const ADDR64 = bit!(20);
         const ADDR = flags!(ADDR64);
 
@@ -114,6 +114,8 @@ bitflags! {
         const SYS_CONTROL = bit!(10);
 
         const JMP = bit!(11);
+
+        const OPCODE_REG = bit!(12);
     }
 }
 
@@ -194,8 +196,9 @@ static ENCODING_TABLE: LazyLock<[Vec<InstEncoding>; Mnemonic::COUNT]> = LazyLock
     // now. We can initialize this directly as an array at any point. It's very slow but this is
     // only run once so it's not a big deal
     let encodings = HashMap::from([
-        // TODO: Make all the DATA_TRANSFER instructions nto need the | REG or | IMM, etc bitflag
-        // and instead have the emitter use the second operand type to figure out what to do
+        (Mnemonic::Halt, vec![
+            InstEncoding::new(0x00, false, EncodingFlags::empty(), [OperandFlags::empty(), OperandFlags::empty(), OperandFlags::empty()]),
+        ]),
         (Mnemonic::Mov, vec![
             InstEncoding::new(0x05, false, encoding!(DATA_TRANSFER), [OperandFlags::GP_REG, OperandFlags::GP_REG, OperandFlags::empty()]),
 
@@ -546,6 +549,15 @@ static ENCODING_TABLE: LazyLock<[Vec<InstEncoding>; Mnemonic::COUNT]> = LazyLock
             InstEncoding::new(0x70, false, encoding!(JMP), [OperandFlags::DISP32, OperandFlags::empty(), OperandFlags::empty()]),
         ]),
 
+        (Mnemonic::Call, vec![
+            // TODO: change opcode
+            InstEncoding::new(0x12, false, encoding!(JMP), [OperandFlags::DISP32, OperandFlags::empty(), OperandFlags::empty()]),
+        ]),
+
+        (Mnemonic::Ret, vec![
+            InstEncoding::new(0x13, false, EncodingFlags::empty(), [OperandFlags::empty(), OperandFlags::empty(), OperandFlags::empty()]),
+        ]),
+
 
         (Mnemonic::Jge, vec![
             InstEncoding::new(0x71, false, encoding!(JMP), [OperandFlags::DISP32, OperandFlags::empty(), OperandFlags::empty()]),
@@ -553,6 +565,23 @@ static ENCODING_TABLE: LazyLock<[Vec<InstEncoding>; Mnemonic::COUNT]> = LazyLock
         (Mnemonic::Jl, vec![
             InstEncoding::new(0x80, false, encoding!(JMP), [OperandFlags::DISP32, OperandFlags::empty(), OperandFlags::empty()]),
         ]),
+
+        (Mnemonic::Rdt, vec![
+            InstEncoding::new(0xf0, false, encoding!(OPCODE_REG), [OperandFlags::GP_REG, OperandFlags::empty(), OperandFlags::empty()]),
+        ]),
+        (Mnemonic::Rdtf, vec![
+            InstEncoding::new(0x02, false, EncodingFlags::empty(), [OperandFlags::empty(), OperandFlags::empty(), OperandFlags::empty()]),
+        ]),
+
+        (Mnemonic::Rdsp, vec![
+            InstEncoding::new(0xf0, true, encoding!(OPCODE_REG), [OperandFlags::GP_REG, OperandFlags::empty(), OperandFlags::empty()]),
+        ]),
+
+        (Mnemonic::Stsp, vec![
+            InstEncoding::new(0xe0, true, encoding!(OPCODE_REG), [OperandFlags::GP_REG, OperandFlags::empty(), OperandFlags::empty()]),
+        ]),
+
+
 
         (Mnemonic::Int, vec![
             InstEncoding::new(0x01, false, encoding!(SYS_CONTROL), [OperandFlags::IMM8, OperandFlags::empty(), OperandFlags::empty()]),
@@ -567,29 +596,76 @@ static ENCODING_TABLE: LazyLock<[Vec<InstEncoding>; Mnemonic::COUNT]> = LazyLock
         encodings_array[key as usize] = value; 
     }
 
+
     assert_eq!(inserted, Mnemonic::COUNT, "Not all mnemonics have encodings defined");
 
     encodings_array
 });
 
+/// Return an iterator over [`ENCODING_TABLE`] mapped to a tuple
+/// of ([`Mnemonic`], &[`InstEncoding`])
+pub fn encodings() -> impl Iterator<Item = (Mnemonic, &'static [InstEncoding])> {
+    let encodings: &'static [Vec<InstEncoding>] = ENCODING_TABLE.as_slice();
+    encodings.iter().enumerate().map(|(idx, encodings)| {
+        (
+            Mnemonic::from_repr(idx).expect(
+                "Index {idx} in the instruction encodings doesn't corrsospond Mnemonic variant",
+            ),
+            encodings.as_slice(),
+        )
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
 
-    /// Return an iterator over [`ENCODING_TABLE`] mapped to a tuple 
-    /// of ([`Mnemonic`], &[`InstEncoding`])
-    fn iterate_over_encodings() -> impl Iterator<Item = (Mnemonic, &'static [InstEncoding])>{
-        let encodings: &'static [Vec<InstEncoding>] = ENCODING_TABLE.as_slice();
-        encodings.iter().enumerate().map(|(idx, encodings)| {
-            (
-                Mnemonic::from_repr(idx).expect(
-                    "Index {idx} in the instruction encodings doesn't corrsospond Mnemonic variant",
-                ),
-                encodings.as_slice(),
-            )
-        })
-
-    }
+    // =======================================================================================
+    // This test doesn't work because it is valid for different instructions to have the same
+    // opcode
+    // =======================================================================================
+    // #[test]
+    // fn no_overlapping_opcodes() {
+    //     let mut opcodes: HashMap<u16, bool> = HashMap::new();
+    //     for (_, encodings) in iterate_over_encodings() {
+    //         let mut encoding_opcodes = HashMap::new();
+    //         for encoding in encodings {
+    //             // Within a single instruction's different encodings there can be duplicate opcodes
+    //             let mut opcode: u16 = 0;
+    //             if encoding.extension {
+    //                 opcode <<= 0x0f;
+    //             }
+    //             opcode |= u16::from(encoding.opcode);
+    //
+    //             if encoding.options.intersects(EncodingFlags::OPCODE_REG) {
+    //                 if encoding.opcode & 0x0f != 0 {
+    //                     panic!("Opcode with OPCODE_REG flag must have lower 4 bits to zero");
+    //                 }
+    //                 // the option OPCODE_REG means all 16 registers are encoded in the lower 4 bits of the
+    //                 // opcode
+    //                 for _ in 0..16 {
+    //                     assert!(
+    //                         opcodes.insert(opcode, true).is_none()
+    //                             || encoding_opcodes.contains_key(&opcode),
+    //                         "Duplicate opcode: {opcode:#04x}"
+    //                     );
+    //                     encoding_opcodes.insert(opcode, true);
+    //                 }
+    //             } else {
+    //                 println!(
+    //                     "Opcode: {opcode:#4x} {}",
+    //                     encoding_opcodes.contains_key(&opcode)
+    //                 );
+    //                 assert!(
+    //                     opcodes.insert(opcode, true).is_none()
+    //                         || encoding_opcodes.contains_key(&opcode),
+    //                     "Duplicate opcode: {opcode:#04x}"
+    //                 );
+    //                 encoding_opcodes.insert(opcode, true);
+    //             }
+    //         }
+    //     }
+    // }
 
     // #[test]
     // fn all_instruction_encodings_have_valid_option_flags_set() {
@@ -604,7 +680,7 @@ mod tests {
     //             // This is mutable because as we test if the option flags upholds the invariants we
     //             // will unset each flag then at the end make sure that there are no bits set
     //             let mut options = encoding.options;
-    //             /* 
+    //             /*
     //             *   Encodings with the DATA_TRANSFER flag set must have only one other flag set in
     //             *   the DATA_TRANSFER category
     //             * */
@@ -626,7 +702,7 @@ mod tests {
     //                 } else {
     //                     invalid_bits_set(mnemonic, i);
     //                 }
-    //             } 
+    //             }
     //             else {
     //                 panic!("{mnemonic:?} at {i}: Invalid encoding flag set ({:?})", encoding.options)
     //             }
@@ -634,7 +710,7 @@ mod tests {
     //             if options.bits().count_ones() > 0 {
     //                 invalid_bits_set(mnemonic, i);
     //             }
-    //         } 
+    //         }
     //     }
     // }
 }

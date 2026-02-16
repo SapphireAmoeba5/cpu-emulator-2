@@ -381,6 +381,7 @@ impl<'a> TokenIter<'a> {
     /// Returns Token::Instruction if the token is an instruction
     fn instruction(token: &str) -> Option<Mnemonic> {
         match token.to_lowercase().as_str() {
+            "halt" => Some(Mnemonic::Halt),
             "mov" => Some(Mnemonic::Mov),
             "mov.u8" | "movb" => Some(Mnemonic::MovU8),
             "mov.u16" | "movq" => Some(Mnemonic::MovU16),
@@ -462,7 +463,16 @@ impl<'a> TokenIter<'a> {
 
             "jge" | "jnl" => Some(Mnemonic::Jge),
             "jl" | "jnge" => Some(Mnemonic::Jl),
+            
+            "call" => Some(Mnemonic::Call),
+            "ret" => Some(Mnemonic::Ret),
 
+            "rdt" => Some(Mnemonic::Rdt),
+
+            "stsp" => Some(Mnemonic::Stsp),
+            "rdsp" => Some(Mnemonic::Rdsp),
+
+            "rdtf" => Some(Mnemonic::Rdtf),
             "int" => Some(Mnemonic::Int),
             _ => None,
         }

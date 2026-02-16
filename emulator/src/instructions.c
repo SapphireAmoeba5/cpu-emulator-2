@@ -1,5 +1,6 @@
 #include "instructions.h"
 #include "cpu.h"
+#include "instruction.h"
 #include "memory.h"
 
 #include <assert.h>
@@ -125,7 +126,7 @@ void invl(Cpu* cpu, uint8_t instruction[16]) {
 }
 
 void halt(Cpu* cpu, uint8_t instructions[16]) {
-    cpu->ip += 1;
+    cpu->registers[IP_INDEX].r += 1;
     printf("REACHED HALT\n");
     // printf("Halted after %lu clock cycles\n", cpu->clock_count);
     // for(int i = 0; i < 32; i++) {
@@ -136,7 +137,7 @@ void halt(Cpu* cpu, uint8_t instructions[16]) {
 }
 
 void intpt(Cpu* cpu, uint8_t instruction[16]) {
-    cpu->ip += 2;
+    cpu->registers[IP_INDEX].r += 2;
 
     uint8_t index = instruction[1];
 
@@ -148,7 +149,7 @@ void intpt(Cpu* cpu, uint8_t instruction[16]) {
                    (int64_t)value);
         }
 
-        printf("ip: %llu\nsp: %llu\n", cpu->ip, cpu->sp);
+        printf("ip: %llu\nsp: %llu\n", cpu->registers[IP_INDEX].r, cpu->registers[SP_INDEX].r);
 
         printf("ZR | CR | OF | SN\n");
 
@@ -340,10 +341,10 @@ static inline void parse_transfer_byte(uint8_t byte, uint8_t* dest,
 // TODO: Make the passed in `instruction` start at the beginning of where the
 // function should start computing
 static inline uint64_t get_pc_rel_addr(Cpu* cpu, uint8_t* instruction) {
-    cpu->ip += 4;
+    cpu->registers[IP_INDEX].r += 4;
     int32_t off = 0;
     memcpy(&off, &instruction[0], sizeof(off));
-    uint64_t address = (uint64_t)((int64_t)cpu->ip + (int64_t)off);
+    uint64_t address = (uint64_t)((int64_t)cpu->registers[IP_INDEX].r + (int64_t)off);
 
     return address;
 }
@@ -367,7 +368,7 @@ static inline bool load_pc_rel(Cpu* cpu, uint8_t* instruction, uint8_t size,
 }
 
 uint64_t get_bis_address(Cpu* cpu, uint8_t* instruction) {
-    cpu->ip += 1;
+    cpu->registers[IP_INDEX].r += 1;
     uint8_t first_byte = instruction[0];
 
     uint8_t scale = 1 << ((first_byte >> 2) & 0b11);
@@ -386,7 +387,7 @@ uint64_t get_bis_address(Cpu* cpu, uint8_t* instruction) {
         base = cpu->registers[base_reg].r;
         base_scale = scale;
     } else {
-        cpu->ip += 1;
+        cpu->registers[IP_INDEX].r += 1;
         uint8_t second_byte = instruction[1];
         uint8_t base_reg = (second_byte >> 4) & 0b1111;
         uint8_t index_reg = second_byte & 0b1111;
@@ -403,7 +404,7 @@ uint64_t get_bis_address(Cpu* cpu, uint8_t* instruction) {
 
     // The displacement is 4 bytes
     if (disp_width == 0) {
-        cpu->ip += 4;
+        cpu->registers[IP_INDEX].r += 4;
 
         int32_t tmp = 0;
         memcpy(&tmp, &instruction[disp_idx], sizeof(tmp));
@@ -412,7 +413,7 @@ uint64_t get_bis_address(Cpu* cpu, uint8_t* instruction) {
     }
     // The displacement is 2 bytes
     else {
-        cpu->ip += 2;
+        cpu->registers[IP_INDEX].r += 2;
 
         int16_t tmp = 0;
         memcpy(&tmp, &instruction[disp_idx], sizeof(tmp));
@@ -443,7 +444,7 @@ static inline bool load_bis(Cpu* cpu, uint8_t* instruction, uint8_t size,
 }
 
 static inline uint64_t get_sp_rel_address(Cpu* cpu, uint8_t* instruction) {
-    cpu->ip += 1;
+    cpu->registers[IP_INDEX].r += 1;
     uint8_t byte = instruction[0];
 
     uint8_t scale = 1 << ((byte >> 2) & 0b11);
@@ -451,7 +452,7 @@ static inline uint64_t get_sp_rel_address(Cpu* cpu, uint8_t* instruction) {
     uint8_t ignore_bit = byte & 1;
     uint8_t disp_width = (byte >> 1) & 1;
 
-    uint64_t sp = cpu->sp;
+    uint64_t sp = cpu->registers[SP_INDEX].r;
     uint64_t sp_scale = 1;
 
     uint64_t index = 0;
@@ -468,7 +469,7 @@ static inline uint64_t get_sp_rel_address(Cpu* cpu, uint8_t* instruction) {
     uint64_t disp = 0;
     // The displacement is 4 bytes
     if (disp_width == 0) {
-        cpu->ip += 4;
+        cpu->registers[IP_INDEX].r += 4;
 
         int32_t tmp = 0;
         memcpy(&tmp, &instruction[1], sizeof(tmp));
@@ -478,7 +479,7 @@ static inline uint64_t get_sp_rel_address(Cpu* cpu, uint8_t* instruction) {
     }
     // The displacement is 2 bytes
     else {
-        cpu->ip += 2;
+        cpu->registers[IP_INDEX].r += 2;
 
         int16_t tmp = 0;
         memcpy(&tmp, &instruction[1], sizeof(tmp));
@@ -558,7 +559,7 @@ static inline bool load_addr_mode_address(Cpu* cpu, uint8_t* instruction,
     case SPRel:
         return load_sp_rel(cpu, instruction, size, value);
     case Addr: {
-        cpu->ip += 8;
+        cpu->registers[IP_INDEX].r += 8;
         // The address is always 8 bytes
         uint64_t address;
         // Only works on little endian systems
@@ -581,7 +582,7 @@ inline static uint64_t get_addr_mode_address(Cpu* cpu, uint8_t* instruction,
         return get_sp_rel_address(cpu, instruction);
     case Addr:
         // The immediate value for the str instruction is always 8 bytes
-        cpu->ip += 8;
+        cpu->registers[IP_INDEX].r += 8;
 
         uint64_t address;
         memcpy(&address, instruction, sizeof(address));
@@ -592,7 +593,7 @@ inline static uint64_t get_addr_mode_address(Cpu* cpu, uint8_t* instruction,
 }
 
 void mov_reg(Cpu* cpu, uint8_t instruction[16]) {
-    cpu->ip += 2;
+    cpu->registers[IP_INDEX].r += 2;
     uint8_t transfer_byte = instruction[1];
     uint8_t dest;
     uint8_t src;
@@ -602,7 +603,7 @@ void mov_reg(Cpu* cpu, uint8_t instruction[16]) {
 
 void mov_mem(Cpu* cpu, uint8_t instruction[16]) {
     // Opcode and the transfer byte
-    cpu->ip += 2;
+    cpu->registers[IP_INDEX].r += 2;
 
     uint8_t dest;
     addr_mode addr_mode;
@@ -617,12 +618,12 @@ void mov_mem(Cpu* cpu, uint8_t instruction[16]) {
 }
 
 void mov_imm(Cpu* cpu, uint8_t instruction[16]) {
-    cpu->ip += 2;
+    cpu->registers[IP_INDEX].r += 2;
     uint8_t dest;
     int size;
     bool sign_extend;
     parse_imm_transfer_byte(instruction[1], &dest, &size, &sign_extend);
-    cpu->ip += 1 << size;
+    cpu->registers[IP_INDEX].r += 1 << size;
     uint64_t value = 0;
     // WARNING: Only works on little endian systems
     memcpy(&value, &instruction[2], 1 << size);
@@ -631,7 +632,7 @@ void mov_imm(Cpu* cpu, uint8_t instruction[16]) {
 }
 
 void sub_reg(Cpu* cpu, uint8_t instruction[16]) {
-    cpu->ip += 2;
+    cpu->registers[IP_INDEX].r += 2;
     uint8_t transfer_byte = instruction[1];
     uint8_t dest;
     uint8_t src;
@@ -645,7 +646,7 @@ void sub_reg(Cpu* cpu, uint8_t instruction[16]) {
 }
 
 void sub_mem(Cpu* cpu, uint8_t instruction[16]) {
-    cpu->ip += 2;
+    cpu->registers[IP_INDEX].r += 2;
 
     uint8_t dest;
     addr_mode addr_mode;
@@ -662,12 +663,12 @@ void sub_mem(Cpu* cpu, uint8_t instruction[16]) {
     cpu->registers[dest].r = difference;
 }
 void sub_imm(Cpu* cpu, uint8_t instruction[16]) {
-    cpu->ip += 2;
+    cpu->registers[IP_INDEX].r += 2;
     uint8_t dest;
     int size;
     bool sign_extend;
     parse_imm_transfer_byte(instruction[1], &dest, &size, &sign_extend);
-    cpu->ip += 1 << size;
+    cpu->registers[IP_INDEX].r += 1 << size;
     uint64_t right = 0;
     // WARNING: Only works on little endian systems
     memcpy(&right, &instruction[2], 1 << size);
@@ -681,7 +682,7 @@ void sub_imm(Cpu* cpu, uint8_t instruction[16]) {
 }
 
 void add_reg(Cpu* cpu, uint8_t* instruction) {
-    cpu->ip += 2;
+    cpu->registers[IP_INDEX].r += 2;
     uint8_t transfer_byte = instruction[1];
     uint8_t dest;
     uint8_t src;
@@ -695,7 +696,7 @@ void add_reg(Cpu* cpu, uint8_t* instruction) {
 }
 
 void add_mem(Cpu* cpu, uint8_t* instruction) {
-    cpu->ip += 2;
+    cpu->registers[IP_INDEX].r += 2;
 
     uint8_t dest;
     addr_mode addr_mode;
@@ -713,12 +714,12 @@ void add_mem(Cpu* cpu, uint8_t* instruction) {
 }
 
 void add_imm(Cpu* cpu, uint8_t* instruction) {
-    cpu->ip += 2;
+    cpu->registers[IP_INDEX].r += 2;
     uint8_t dest;
     int size;
     bool sign_extend;
     parse_imm_transfer_byte(instruction[1], &dest, &size, &sign_extend);
-    cpu->ip += 1 << size;
+    cpu->registers[IP_INDEX].r += 1 << size;
     uint64_t right = 0;
     // WARNING: Only works on little endian systems
     memcpy(&right, &instruction[2], 1 << size);
@@ -732,7 +733,7 @@ void add_imm(Cpu* cpu, uint8_t* instruction) {
 }
 
 void mul_reg(Cpu* cpu, uint8_t* instruction) {
-    cpu->ip += 2;
+    cpu->registers[IP_INDEX].r += 2;
     uint8_t transfer_byte = instruction[1];
     uint8_t dest;
     uint8_t src;
@@ -746,7 +747,7 @@ void mul_reg(Cpu* cpu, uint8_t* instruction) {
 }
 
 void mul_mem(Cpu* cpu, uint8_t* instruction) {
-    cpu->ip += 2;
+    cpu->registers[IP_INDEX].r += 2;
 
     uint8_t dest;
     addr_mode addr_mode;
@@ -764,12 +765,12 @@ void mul_mem(Cpu* cpu, uint8_t* instruction) {
 }
 
 void mul_imm(Cpu* cpu, uint8_t* instruction) {
-    cpu->ip += 2;
+    cpu->registers[IP_INDEX].r += 2;
     uint8_t dest;
     int size;
     bool sign_extend;
     parse_imm_transfer_byte(instruction[1], &dest, &size, &sign_extend);
-    cpu->ip += 1 << size;
+    cpu->registers[IP_INDEX].r += 1 << size;
     uint64_t right = 0;
     // WARNING: Only works on little endian systems
     memcpy(&right, &instruction[2], 1 << size);
@@ -783,7 +784,7 @@ void mul_imm(Cpu* cpu, uint8_t* instruction) {
 }
 
 void div_reg(Cpu* cpu, uint8_t* instruction) {
-    cpu->ip += 2;
+    cpu->registers[IP_INDEX].r += 2;
     uint8_t transfer_byte = instruction[1];
     uint8_t dest;
     uint8_t src;
@@ -803,7 +804,7 @@ void div_reg(Cpu* cpu, uint8_t* instruction) {
 }
 
 void div_mem(Cpu* cpu, uint8_t* instruction) {
-    cpu->ip += 2;
+    cpu->registers[IP_INDEX].r += 2;
 
     uint8_t dest;
     addr_mode addr_mode;
@@ -827,12 +828,12 @@ void div_mem(Cpu* cpu, uint8_t* instruction) {
 }
 
 void div_imm(Cpu* cpu, uint8_t* instruction) {
-    cpu->ip += 2;
+    cpu->registers[IP_INDEX].r += 2;
     uint8_t dest;
     int size;
     bool sign_extend;
     parse_imm_transfer_byte(instruction[1], &dest, &size, &sign_extend);
-    cpu->ip += 1 << size;
+    cpu->registers[IP_INDEX].r += 1 << size;
     uint64_t right = 0;
     // WARNING: Only works on little endian systems
     memcpy(&right, &instruction[2], 1 << size);
@@ -851,7 +852,7 @@ void div_imm(Cpu* cpu, uint8_t* instruction) {
 }
 
 void idiv_reg(Cpu* cpu, uint8_t* instruction) {
-    cpu->ip += 2;
+    cpu->registers[IP_INDEX].r += 2;
     uint8_t transfer_byte = instruction[1];
     uint8_t dest;
     uint8_t src;
@@ -871,7 +872,7 @@ void idiv_reg(Cpu* cpu, uint8_t* instruction) {
 }
 
 void idiv_mem(Cpu* cpu, uint8_t* instruction) {
-    cpu->ip += 2;
+    cpu->registers[IP_INDEX].r += 2;
 
     uint8_t dest;
     addr_mode addr_mode;
@@ -895,12 +896,12 @@ void idiv_mem(Cpu* cpu, uint8_t* instruction) {
 }
 
 void idiv_imm(Cpu* cpu, uint8_t* instruction) {
-    cpu->ip += 2;
+    cpu->registers[IP_INDEX].r += 2;
     uint8_t dest;
     int size;
     bool sign_extend;
     parse_imm_transfer_byte(instruction[1], &dest, &size, &sign_extend);
-    cpu->ip += 1 << size;
+    cpu->registers[IP_INDEX].r += 1 << size;
     uint64_t right = 0;
     // WARNING: Only works on little endian systems
     memcpy(&right, &instruction[2], 1 << size);
@@ -919,7 +920,7 @@ void idiv_imm(Cpu* cpu, uint8_t* instruction) {
 }
 
 void and_reg(Cpu* cpu, uint8_t* instruction) {
-    cpu->ip += 2;
+    cpu->registers[IP_INDEX].r += 2;
     uint8_t transfer_byte = instruction[1];
     uint8_t dest;
     uint8_t src;
@@ -935,7 +936,7 @@ void and_reg(Cpu* cpu, uint8_t* instruction) {
 }
 
 void and_mem(Cpu* cpu, uint8_t* instruction) {
-    cpu->ip += 2;
+    cpu->registers[IP_INDEX].r += 2;
 
     uint8_t dest;
     addr_mode addr_mode;
@@ -955,12 +956,12 @@ void and_mem(Cpu* cpu, uint8_t* instruction) {
 }
 
 void and_imm(Cpu* cpu, uint8_t* instruction) {
-    cpu->ip += 2;
+    cpu->registers[IP_INDEX].r += 2;
     uint8_t dest;
     int size;
     bool sign_extend;
     parse_imm_transfer_byte(instruction[1], &dest, &size, &sign_extend);
-    cpu->ip += 1 << size;
+    cpu->registers[IP_INDEX].r += 1 << size;
     uint64_t right = 0;
     // WARNING: Only works on little endian systems
     memcpy(&right, &instruction[2], 1 << size);
@@ -975,7 +976,7 @@ void and_imm(Cpu* cpu, uint8_t* instruction) {
 }
 
 void or_reg(Cpu* cpu, uint8_t* instruction) {
-    cpu->ip += 2;
+    cpu->registers[IP_INDEX].r += 2;
     uint8_t transfer_byte = instruction[1];
     uint8_t dest;
     uint8_t src;
@@ -991,7 +992,7 @@ void or_reg(Cpu* cpu, uint8_t* instruction) {
 }
 
 void or_mem(Cpu* cpu, uint8_t* instruction) {
-    cpu->ip += 2;
+    cpu->registers[IP_INDEX].r += 2;
 
     uint8_t dest;
     addr_mode addr_mode;
@@ -1011,12 +1012,12 @@ void or_mem(Cpu* cpu, uint8_t* instruction) {
 }
 
 void or_imm(Cpu* cpu, uint8_t* instruction) {
-    cpu->ip += 2;
+    cpu->registers[IP_INDEX].r += 2;
     uint8_t dest;
     int size;
     bool sign_extend;
     parse_imm_transfer_byte(instruction[1], &dest, &size, &sign_extend);
-    cpu->ip += 1 << size;
+    cpu->registers[IP_INDEX].r += 1 << size;
     uint64_t right = 0;
     // WARNING: Only works on little endian systems
     memcpy(&right, &instruction[2], 1 << size);
@@ -1031,7 +1032,7 @@ void or_imm(Cpu* cpu, uint8_t* instruction) {
 }
 
 void xor_reg(Cpu* cpu, uint8_t* instruction) {
-    cpu->ip += 2;
+    cpu->registers[IP_INDEX].r += 2;
     uint8_t transfer_byte = instruction[1];
     uint8_t dest;
     uint8_t src;
@@ -1047,7 +1048,7 @@ void xor_reg(Cpu* cpu, uint8_t* instruction) {
 }
 
 void xor_mem(Cpu* cpu, uint8_t* instruction) {
-    cpu->ip += 2;
+    cpu->registers[IP_INDEX].r += 2;
 
     uint8_t dest;
     addr_mode addr_mode;
@@ -1067,12 +1068,12 @@ void xor_mem(Cpu* cpu, uint8_t* instruction) {
 }
 
 void xor_imm(Cpu* cpu, uint8_t* instruction) {
-    cpu->ip += 2;
+    cpu->registers[IP_INDEX].r += 2;
     uint8_t dest;
     int size;
     bool sign_extend;
     parse_imm_transfer_byte(instruction[1], &dest, &size, &sign_extend);
-    cpu->ip += 1 << size;
+    cpu->registers[IP_INDEX].r += 1 << size;
     uint64_t right = 0;
     // WARNING: Only works on little endian systems
     memcpy(&right, &instruction[2], 1 << size);
@@ -1087,7 +1088,7 @@ void xor_imm(Cpu* cpu, uint8_t* instruction) {
 }
 
 void cmp_reg(Cpu* cpu, uint8_t instruction[16]) {
-    cpu->ip += 2;
+    cpu->registers[IP_INDEX].r += 2;
     uint8_t transfer_byte = instruction[1];
     uint8_t dest;
     uint8_t src;
@@ -1099,7 +1100,7 @@ void cmp_reg(Cpu* cpu, uint8_t instruction[16]) {
 }
 
 void cmp_mem(Cpu* cpu, uint8_t instruction[16]) {
-    cpu->ip += 2;
+    cpu->registers[IP_INDEX].r += 2;
 
     uint8_t dest;
     addr_mode addr_mode;
@@ -1114,12 +1115,12 @@ void cmp_mem(Cpu* cpu, uint8_t instruction[16]) {
     uint64_t difference = do_sub(cpu, left, right);
 }
 void cmp_imm(Cpu* cpu, uint8_t instruction[16]) {
-    cpu->ip += 2;
+    cpu->registers[IP_INDEX].r += 2;
     uint8_t dest;
     int size;
     bool sign_extend;
     parse_imm_transfer_byte(instruction[1], &dest, &size, &sign_extend);
-    cpu->ip += 1 << size;
+    cpu->registers[IP_INDEX].r += 1 << size;
     uint64_t right = 0;
     // WARNING: Only works on little endian systems
     memcpy(&right, &instruction[2], 1 << size);
@@ -1130,7 +1131,7 @@ void cmp_imm(Cpu* cpu, uint8_t instruction[16]) {
 }
 
 void test_reg(Cpu* cpu, uint8_t* instruction) {
-    cpu->ip += 2;
+    cpu->registers[IP_INDEX].r += 2;
     uint8_t transfer_byte = instruction[1];
     uint8_t dest;
     uint8_t src;
@@ -1144,7 +1145,7 @@ void test_reg(Cpu* cpu, uint8_t* instruction) {
 }
 
 void test_mem(Cpu* cpu, uint8_t* instruction) {
-    cpu->ip += 2;
+    cpu->registers[IP_INDEX].r += 2;
 
     uint8_t dest;
     addr_mode addr_mode;
@@ -1162,12 +1163,12 @@ void test_mem(Cpu* cpu, uint8_t* instruction) {
 }
 
 void test_imm(Cpu* cpu, uint8_t* instruction) {
-    cpu->ip += 2;
+    cpu->registers[IP_INDEX].r += 2;
     uint8_t dest;
     int size;
     bool sign_extend;
     parse_imm_transfer_byte(instruction[1], &dest, &size, &sign_extend);
-    cpu->ip += 1 << size;
+    cpu->registers[IP_INDEX].r += 1 << size;
     uint64_t right = 0;
     // WARNING: Only works on little endian systems
     memcpy(&right, &instruction[2], 1 << size);
@@ -1179,7 +1180,7 @@ void test_imm(Cpu* cpu, uint8_t* instruction) {
 }
 
 void str(Cpu* cpu, uint8_t instruction[16]) {
-    cpu->ip += 2;
+    cpu->registers[IP_INDEX].r += 2;
 
     uint8_t dest;
     addr_mode addr_mode;
@@ -1214,7 +1215,7 @@ void str(Cpu* cpu, uint8_t instruction[16]) {
 }
 
 void lea(Cpu* cpu, uint8_t instruction[16]) {
-    cpu->ip += 2;
+    cpu->registers[IP_INDEX].r += 2;
 
     uint8_t dest;
     addr_mode addr_mode;
@@ -1228,131 +1229,131 @@ void lea(Cpu* cpu, uint8_t instruction[16]) {
 }
 
 void jmp(Cpu* cpu, uint8_t instruction[16]) {
-    cpu->ip += 5;
+    cpu->registers[IP_INDEX].r += 5;
     int32_t offset;
     memcpy(&offset, &instruction[1], sizeof(offset));
-    cpu->ip += (int64_t)offset;
+    cpu->registers[IP_INDEX].r += (int64_t)offset;
 }
 
 void jz(Cpu* cpu, uint8_t instruction[16]) {
-    cpu->ip += 5;
+    cpu->registers[IP_INDEX].r += 5;
     if (cpu->flags & FLAG_ZERO) {
         int32_t offset;
         memcpy(&offset, &instruction[1], sizeof(offset));
-        cpu->ip += (int64_t)offset;
+        cpu->registers[IP_INDEX].r += (int64_t)offset;
     }
 }
 
 void jnz(Cpu* cpu, uint8_t instruction[16]) {
-    cpu->ip += 5;
+    cpu->registers[IP_INDEX].r += 5;
     if ((cpu->flags & FLAG_ZERO) == 0) {
         int32_t offset;
         memcpy(&offset, &instruction[1], sizeof(offset));
-        cpu->ip += (int64_t)offset;
+        cpu->registers[IP_INDEX].r += (int64_t)offset;
     }
 }
 
 void jc(Cpu* cpu, uint8_t instruction[16]) {
-    cpu->ip += 5;
+    cpu->registers[IP_INDEX].r += 5;
     if (cpu->flags & FLAG_CARRY) {
         int32_t offset;
         memcpy(&offset, &instruction[1], sizeof(offset));
-        cpu->ip += (int64_t)offset;
+        cpu->registers[IP_INDEX].r += (int64_t)offset;
     }
 }
 void jnc(Cpu* cpu, uint8_t instruction[16]) {
-    cpu->ip += 5;
+    cpu->registers[IP_INDEX].r += 5;
     if ((cpu->flags & FLAG_CARRY) == 0) {
         int32_t offset;
         memcpy(&offset, &instruction[1], sizeof(offset));
-        cpu->ip += (int64_t)offset;
+        cpu->registers[IP_INDEX].r += (int64_t)offset;
     }
 }
 
 void jo(Cpu* cpu, uint8_t instruction[16]) {
-    cpu->ip += 5;
+    cpu->registers[IP_INDEX].r += 5;
     if (cpu->flags & FLAG_OVERFLOW) {
         int32_t offset;
         memcpy(&offset, &instruction[1], sizeof(offset));
-        cpu->ip += (int64_t)offset;
+        cpu->registers[IP_INDEX].r += (int64_t)offset;
     }
 }
 void jno(Cpu* cpu, uint8_t instruction[16]) {
-    cpu->ip += 5;
+    cpu->registers[IP_INDEX].r += 5;
     if ((cpu->flags & FLAG_OVERFLOW) == 0) {
         int32_t offset;
         memcpy(&offset, &instruction[1], sizeof(offset));
-        cpu->ip += (int64_t)offset;
+        cpu->registers[IP_INDEX].r += (int64_t)offset;
     }
 }
 
 void js(Cpu* cpu, uint8_t instruction[16]) {
-    cpu->ip += 5;
+    cpu->registers[IP_INDEX].r += 5;
     if (cpu->flags & FLAG_SIGN) {
         int32_t offset;
         memcpy(&offset, &instruction[1], sizeof(offset));
-        cpu->ip += (int64_t)offset;
+        cpu->registers[IP_INDEX].r += (int64_t)offset;
     }
 }
 void jns(Cpu* cpu, uint8_t instruction[16]) {
-    cpu->ip += 5;
+    cpu->registers[IP_INDEX].r += 5;
     if ((cpu->flags & FLAG_SIGN) == 0) {
         int32_t offset;
         memcpy(&offset, &instruction[1], sizeof(offset));
-        cpu->ip += (int64_t)offset;
+        cpu->registers[IP_INDEX].r += (int64_t)offset;
     }
 }
 
 void ja(Cpu* cpu, uint8_t instruction[16]) {
-    cpu->ip += 5;
+    cpu->registers[IP_INDEX].r += 5;
     if ((cpu->flags & FLAG_CARRY) == 0 && (cpu->flags & FLAG_ZERO) == 0) {
         int32_t offset;
         memcpy(&offset, &instruction[1], sizeof(offset));
-        cpu->ip += (int64_t)offset;
+        cpu->registers[IP_INDEX].r += (int64_t)offset;
     }
 }
 void jbe(Cpu* cpu, uint8_t instruction[16]) {
-    cpu->ip += 5;
+    cpu->registers[IP_INDEX].r += 5;
     if (cpu->flags & FLAG_CARRY || cpu->flags & FLAG_ZERO) {
         int32_t offset;
         memcpy(&offset, &instruction[1], sizeof(offset));
-        cpu->ip += (int64_t)offset;
+        cpu->registers[IP_INDEX].r += (int64_t)offset;
     }
 }
 
 void jg(Cpu* cpu, uint8_t instruction[16]) {
-    cpu->ip += 5;
+    cpu->registers[IP_INDEX].r += 5;
     if ((cpu->flags & FLAG_ZERO) == 0 &&
         ((cpu->flags & FLAG_SIGN) == 0) ==
             ((cpu->flags & FLAG_OVERFLOW) == 0)) {
         int32_t offset;
         memcpy(&offset, &instruction[1], sizeof(offset));
-        cpu->ip += (int64_t)offset;
+        cpu->registers[IP_INDEX].r += (int64_t)offset;
     }
 }
 void jle(Cpu* cpu, uint8_t instruction[16]) {
-    cpu->ip += 5;
+    cpu->registers[IP_INDEX].r += 5;
     if (cpu->flags & FLAG_ZERO || ((cpu->flags & FLAG_SIGN) == 0) !=
                                       ((cpu->flags & FLAG_OVERFLOW) == 0)) {
         int32_t offset;
         memcpy(&offset, &instruction[1], sizeof(offset));
-        cpu->ip += (int64_t)offset;
+        cpu->registers[IP_INDEX].r += (int64_t)offset;
     }
 }
 
 void jge(Cpu* cpu, uint8_t instruction[16]) {
-    cpu->ip += 5;
+    cpu->registers[IP_INDEX].r += 5;
     if (((cpu->flags & FLAG_SIGN) == 0 == (cpu->flags & FLAG_OVERFLOW) == 0)) {
         int32_t offset;
         memcpy(&offset, &instruction[1], sizeof(offset));
-        cpu->ip += (int64_t)offset;
+        cpu->registers[IP_INDEX].r += (int64_t)offset;
     }
 }
 void jl(Cpu* cpu, uint8_t instruction[16]) {
-    cpu->ip += 5;
+    cpu->registers[IP_INDEX].r += 5;
     if ((cpu->flags & FLAG_SIGN) == 0 != (cpu->flags & FLAG_OVERFLOW) == 0) {
         int32_t offset;
         memcpy(&offset, &instruction[1], sizeof(offset));
-        cpu->ip += (int64_t)offset;
+        cpu->registers[IP_INDEX].r += (int64_t)offset;
     }
 }

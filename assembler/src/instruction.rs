@@ -20,6 +20,7 @@ pub struct Instruction {
 
 #[derive(Debug, Clone, Copy, Hash, Eq, PartialEq, IntoStaticStr, AsRefStr, EnumCount, FromRepr)]
 pub enum Mnemonic {
+    Halt,
     Mov,
     MovU8,
     MovU16,
@@ -115,6 +116,15 @@ pub enum Mnemonic {
 
     Jge,
     Jl,
+
+    Call,
+    Ret,
+
+    Rdt,
+    Rdtf,
+
+    Rdsp,
+    Stsp,
 
     Int,
 }

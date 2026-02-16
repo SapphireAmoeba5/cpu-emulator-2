@@ -37,7 +37,7 @@ impl TryFrom<Register> for GPRegister {
     }
 }
 
-const EXTENSION_BYTE: u8 = 0x0f;
+pub const EXTENSION_BYTE: u8 = 0x0f;
 
 #[derive(Debug, Copy, Clone, Eq, PartialEq)]
 #[repr(u8)]
@@ -523,7 +523,12 @@ impl Assembler {
             };
 
             self.get_section().write_u32(offset as u32);
-        } else {
+        } else if options.intersects(encoding!(OPCODE_REG)) {
+            let reg = instruction.operands[0].register();
+
+            // Instructions with the OPCODE_REG option has its register encoded as the last 4 bits
+            *self.get_section().data.last_mut().unwrap() |= reg.get_gp().unwrap();
+        } else if !options.is_empty() && instruction.operand_count == 0 {
             panic!("Invalid instruction")
         }
 

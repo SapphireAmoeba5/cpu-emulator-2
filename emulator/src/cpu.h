@@ -1,6 +1,8 @@
 #pragma once
 
+#include "instruction_cache.h"
 #include "address_bus.h"
+#include "timer.h"
 #include <stdbool.h>
 #include <stdint.h>
 
@@ -12,6 +14,11 @@
     printf("%s:%d Unreachable code reached!\n", __FILE__, __LINE__);           \
     abort()
 #endif
+
+// Maximum amount of instructions to cache if there were no branch points
+constexpr uint64_t MAX_CACHE_BLOCK = 32;
+
+constexpr uint64_t CLOCK_HZ = 500000000;
 
 #define BIT(n) 1 << (n)
 
@@ -29,6 +36,9 @@ constexpr flags_t FLAG_CARRY = BIT(1);
 constexpr flags_t FLAG_OVERFLOW = BIT(2);
 constexpr flags_t FLAG_SIGN = BIT(3);
 
+constexpr uint64_t SP_INDEX = 16;
+constexpr uint64_t IP_INDEX = 17;
+
 typedef union reg {
     uint8_t b;
     uint16_t s;
@@ -40,11 +50,8 @@ typedef struct Cpu {
     address_bus* bus;
     // Total number of clocks
     uint64_t clock_count;
-    // 16 general purpose registers
-    reg registers[16];
-    // Instruction and stack pointer
-    uint64_t ip;
-    uint64_t sp;
+    // 16 general purpose registers plus the stack pointer and instruction pointer
+    reg registers[16 + 2];
 
     // If the CPU is halted
     bool halt;
@@ -53,11 +60,8 @@ typedef struct Cpu {
     // CPU flags
     flags_t flags;
 
-    // The address that has been cached
-    uint64_t cached_address;
-    // Stores a local cache of BLOCK_SIZE bytes containing instructions
-    uint8_t cache[BLOCK_SIZE];
-
+    instruction_cache cache;
+    timer timer;
 } Cpu;
 
 bool cpu_write_8(Cpu* cpu, uint64_t data, uint64_t address);
@@ -75,6 +79,9 @@ bool cpu_read_2(Cpu* cpu, uint64_t address, uint16_t* value);
 bool cpu_read_1(Cpu* cpu, uint64_t address, uint8_t* value);
 bool cpu_read_n(Cpu* cpu, uint64_t address, void* out, uint64_t n);
 bool cpu_read_block(Cpu* cpu, uint64_t address, void* out);
+
+bool cpu_push(Cpu* cpu, uint64_t value);
+bool cpu_pop(Cpu* cpu, uint64_t* out);
 
 void cpu_create(Cpu* cpu, address_bus* bus);
 void cpu_destroy(Cpu* cpu);

@@ -1,5 +1,5 @@
 mod directive;
-mod emit;
+pub(super) mod emit;
 mod parse;
 pub mod symbol_table;
 use bitflags::Flag;
@@ -733,45 +733,6 @@ impl Assembler {
             self.filename, self.current_line
         );
 
-        // let mut instr_relocs = [Relocation::None; MAX_OPERANDS];
-
-        // for (i, (reloc_needed, type_, reloc)) in
-        //     izip!(&reloc_needed, &types, &mut instr_relocs).take(operand_count).enumerate()
-        // {
-        //     if *reloc_needed {
-        //         // Figure out which relocation type we need
-        //         if type_.intersects(operand!(IMM)) {
-        //             if type_.intersects(operand!(IMM8)) {
-        //                 *reloc = Relocation::Abs8;
-        //             } else if type_.intersects(operand!(IMM32)) {
-        //                 *reloc = Relocation::Abs32;
-        //             } else if type_.intersects(operand!(IMM64)) {
-        //                 *reloc = Relocation::Abs64;
-        //             } else {
-        //                 unreachable!();
-        //             }
-        //         } else if type_.intersects(operand!(DISP)) {
-        //             if type_.intersects(operand!(DISP32)) {
-        //                 *reloc = Relocation::PC32;
-        //             } else {
-        //                 unreachable!();
-        //             }
-        //         } else if type_.intersects(operand!(ADDR)) {
-        //             if type_.intersects(operand!(ADDR64)) {
-        //                 *reloc = Relocation::Addr64;
-        //             } else {
-        //                 unreachable!();
-        //             }
-        //         } else if type_.intersects(OperandFlags::INDEX) {
-        //             if index_addresses[i].is_label {
-        //                 *reloc_needed = Relocation::PC32;
-        //             }
-        //         } else {
-        //             unreachable!("No other operand flag should need a relocation");
-        //         }
-        //     }
-        // }
-
         let instruction = Instruction {
             encoding,
             operand_count,
@@ -800,6 +761,10 @@ impl Assembler {
             operands.len() == types.len() && operand_exprs.len() == types.len(),
             "Arrays not the same size"
         );
+
+        if matches!(tokens.peek()?.context("Expected token")?, Token::Newline) {
+            return Ok(0);
+        }
 
         let mut num_operands = 0;
 
