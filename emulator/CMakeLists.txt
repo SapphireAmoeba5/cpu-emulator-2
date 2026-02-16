@@ -7,6 +7,27 @@ set(CMAKE_C_EXTENSIONS OFF)
 
 set(CMAKE_EXPORT_COMPILE_COMMANDS TRUE)
 
+if(APPLE)
+    set(
+        PLATFORM_SRC
+        src/platform/macos/timer.c
+    )
+set(
+        PLATFORM_INCLUDE
+        src/platform/macos/
+    )
+elseif(LINUX)
+    set(
+        PLATFORM_SRC
+        src/platform/linux/timer.c
+    )
+set(
+        PLATFORM_INCLUDE
+        src/platform/linux/
+    )
+
+endif()
+
 include(CheckIPOSupported)
 check_ipo_supported(RESULT IPO_SUPPORTED OUTPUT IPO_OUTPUT)
 if(IPO_SUPPORTED)
@@ -29,13 +50,12 @@ add_executable(${PROJECT_NAME}
     src/bus_device.c
     src/devices/memory.c
     # TODO: Platform specific check
-    src/platform/linux/timer.c
     xxhash/xxhash.c
+    ${PLATFORM_SRC}
 )
 
 target_include_directories(${PROJECT_NAME} PUBLIC
     src/
     xxhash/
-    # TODO: Platform specific check
-    src/platform/linux
+    ${PLATFORM_INCLUDE}
 )
