@@ -57,7 +57,7 @@ bool cpu_push(Cpu* cpu, uint64_t value) {
 }
 
 bool cpu_pop(Cpu* cpu, uint64_t* out) {
-    if(!cpu_read_8(cpu, cpu->registers[SP_INDEX].r, out)) {
+    if (!cpu_read_8(cpu, cpu->registers[SP_INDEX].r, out)) {
         return false;
     }
     cpu->registers[SP_INDEX].r += 8;
@@ -83,6 +83,10 @@ void cpu_run(Cpu* cpu) {
         block* buf = instr_cache_get(&cpu->cache, cpu->registers[IP_INDEX].r);
 
         if (buf->len == 0) {
+            // TODO: Check if it is faster to always cache up to the maximum
+            // cache size, ignoring branches and manually check in the execution
+            // loop if the IP has been modified.
+            // This could potentially lower the overhead of caches since we won't need
             bool branches = false;
 
             uint64_t block_start = cpu->registers[IP_INDEX].r;

@@ -5,6 +5,11 @@
 
 typedef struct bus_device bus_device;
 
+typedef enum {
+    device_custom,
+    device_memory,
+} device_type;
+
 typedef struct {
     /// Called when the device gets added to the address bus
     ///
@@ -32,5 +37,6 @@ typedef struct {
 
 typedef struct bus_device {
     const bus_device_vtable* vtable; 
+    device_type type;
 }bus_device;
 

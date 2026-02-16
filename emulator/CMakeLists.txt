@@ -49,7 +49,6 @@ add_executable(${PROJECT_NAME}
     src/address_bus.c
     src/bus_device.c
     src/devices/memory.c
-    # TODO: Platform specific check
     xxhash/xxhash.c
     ${PLATFORM_SRC}
 )

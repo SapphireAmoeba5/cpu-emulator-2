@@ -29,6 +29,7 @@ const bus_device_vtable memory_vtable = {
 
 typedef struct memory {
     const bus_device_vtable* vtable;
+    device_type type;
     uint8_t* data;
     size_t length;
 } memory;
@@ -41,6 +42,7 @@ memory* memory_create() {
     }
 
     mem->vtable = &memory_vtable;
+    mem->type = device_memory;
 
     return mem;
 }

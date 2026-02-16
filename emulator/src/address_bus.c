@@ -1,9 +1,141 @@
 #include "address_bus.h"
 #include "bus_device.h"
+#include "devices/memory.h"
 #include <assert.h>
+#include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+
+inline static bool dispatch_init(bus_device* device, size_t length) {
+    switch(device->type) {
+        case device_memory:
+            return memory_init(device, length);
+        case device_custom:
+            return device->vtable->device_init(device, length);
+    }
+}
+
+inline static bool dispatch_destroy(bus_device* device) {
+    switch(device->type) {
+        case device_memory:
+            return memory_destroy(device);
+        case device_custom:
+            return device->vtable->device_destroy(device);
+    }
+
+}
+
+inline static bool dispatch_read_8(bus_device* bus, uint64_t off, uint64_t* out) {
+    switch(bus->type) {
+        case device_memory:
+            return memory_read_8(bus, off, out);
+        case device_custom:
+            return bus->vtable->device_read_8(bus, off, out);
+    }
+}
+
+inline static bool dispatch_read_4(bus_device* bus, uint64_t off, uint32_t* out) {
+    switch(bus->type) {
+        case device_memory:
+            return memory_read_4(bus, off, out);
+        case device_custom:
+            return bus->vtable->device_read_4(bus, off, out);
+    }
+
+}
+inline static bool dispatch_read_2(bus_device* bus, uint64_t off, uint16_t* out) {
+    switch(bus->type) {
+        case device_memory:
+            return memory_read_2(bus, off, out);
+        case device_custom:
+            return bus->vtable->device_read_2(bus, off, out);
+    }
+
+}
+inline static bool dispatch_read_1(bus_device* bus, uint64_t off, uint8_t* out) {
+    switch(bus->type) {
+        case device_memory:
+            return memory_read_1(bus, off, out);
+        case device_custom:
+            return bus->vtable->device_read_1(bus, off, out);
+    }
+
+}
+inline static bool dispatch_read_n(bus_device* bus, uint64_t off, void* out, uint64_t n) {
+    switch(bus->type) {
+        case device_memory:
+            return memory_read_n(bus, off, out, n);
+        case device_custom:
+            return bus->vtable->device_read_8(bus, off, out);
+    }
+
+}
+inline static bool dispatch_read_block(bus_device* device, uint64_t off, void* out) {
+    switch(device->type) {
+        case device_memory:
+            return memory_read_block(device, off, out);
+        case device_custom:
+            return device->vtable->device_read_8(device, off, out);
+    }
+
+}
+
+inline static bool dispatch_write_8(bus_device* device, uint64_t off, uint64_t value) {
+    switch(device->type) {
+        case device_memory:
+            return memory_write_8(device, off, value);
+        case device_custom:
+            return device->vtable->device_write_8(device, off, value);
+    }
+
+}
+
+inline static bool dispatch_write_4(bus_device* device, uint64_t off, uint32_t value) {
+    switch(device->type) {
+        case device_memory:
+            return memory_write_4(device, off, value);
+        case device_custom:
+            return device->vtable->device_write_4(device, off, value);
+    }
+
+}
+inline static bool dispatch_write_2(bus_device* device, uint64_t off, uint16_t value) {
+    switch(device->type) {
+        case device_memory:
+            return memory_write_2(device, off, value);
+        case device_custom:
+            return device->vtable->device_write_2(device, off, value);
+    }
+}
+inline static bool dispatch_write_1(bus_device* device, uint64_t off, uint8_t value) {
+    switch(device->type) {
+        case device_memory:
+            return memory_write_1(device, off, value);
+        case device_custom:
+            return device->vtable->device_write_1(device, off, value);
+    }
+
+}
+inline static bool dispatch_write_n(bus_device* device, uint64_t off, void* in, uint64_t n) {
+    switch(device->type) {
+        case device_memory:
+            return memory_write_n(device, off, in, n);
+        case device_custom:
+            return device->vtable->device_write_n(device, off, in, n);
+    }
+
+}
+inline static bool dispatch_write_block(bus_device* device, uint64_t off, void* in) {
+    switch(device->type) {
+        case device_memory:
+            return memory_write_block(device, off, in);
+        case device_custom:
+            return device->vtable->device_write_block(device, off, in);
+    }
+
+}
+
 
 inline static void shift_right(address_bus* bus, uint64_t at) {
     assert(bus->num_devices < MAX_DEVICES);
@@ -21,14 +153,15 @@ inline static void put_device(address_bus* bus, size_t i, addr_range range,
     size_t length = range.range + 1;
     bus->ranges[i] = range;
     bus->devices[i] = device;
-    device->vtable->device_init(device, length);
+    // TODO: If this function returns false, don't insert it into the list
+    dispatch_init(device, length);
 }
 
 void addr_bus_init(address_bus* bus) { memset(bus, 0, sizeof(address_bus)); }
 void addr_bus_destroy(address_bus* bus) {
     for(int i = 0; i < bus->num_devices; i++) {
         bus_device* device = bus->devices[i];
-        device->vtable->device_destroy(device);
+        dispatch_destroy(device);
         free(device);
     }
 }
@@ -121,8 +254,7 @@ bool addr_bus_read_8(address_bus* bus, uint64_t addr, uint64_t* out) {
                 return false;
             }
             size_t off = addr - range.address;
-            device->vtable->device_read_8(device, off, out);
-            return true;
+            return dispatch_read_8(device, off, out);
         }
     }
 
@@ -138,8 +270,7 @@ bool addr_bus_read_4(address_bus* bus, uint64_t addr, uint32_t* out) {
                 return false;
             }
             size_t off = addr - range.address;
-            device->vtable->device_read_4(device, off, out);
-            return true;
+            return dispatch_read_4(device, off, out);
         }
     }
 
@@ -155,8 +286,7 @@ bool addr_bus_read_2(address_bus* bus, uint64_t addr, uint16_t* out) {
                 return false;
             }
             size_t off = addr - range.address;
-            device->vtable->device_read_2(device, off, out);
-            return true;
+            return dispatch_read_2(device, off, out);
         }
     }
 
@@ -169,8 +299,7 @@ bool addr_bus_read_1(address_bus* bus, uint64_t addr, uint8_t* out) {
 
         if(address_intersects(range, addr)) {
             size_t off = addr - range.address;
-            device->vtable->device_read_1(device, off, out);
-            return true;
+            return dispatch_read_1(device, off, out);
         }
     }
 
@@ -187,8 +316,7 @@ bool addr_bus_read_n(address_bus* bus, uint64_t addr, void* out, uint64_t n) {
                 return false;
             }
             size_t off = addr - range.address;
-            device->vtable->device_read_n(device, off, out, n);
-            return true;
+            return dispatch_read_n(device, off, out, n);
         }
     }
     return false;
@@ -204,8 +332,7 @@ bool addr_bus_read_block(address_bus* bus, uint64_t addr, void* out) {
                 return false;
             }
             size_t off = addr - range.address;
-            device->vtable->device_read_block(device, off, out);
-            return true;
+            return dispatch_read_block(device, off, out);
         }
     }
     return false;
@@ -222,8 +349,7 @@ bool addr_bus_write_8(address_bus* bus, uint64_t addr, uint64_t value) {
                 return false;
             }
             size_t off = addr - range.address;
-            device->vtable->device_write_8(device, off, value);
-            return true;
+            return dispatch_write_8(device, off, value);
         }
     }
     printf("No devices found\n");
@@ -239,8 +365,7 @@ bool addr_bus_write_4(address_bus* bus, uint64_t addr, uint32_t value) {
                 return false;
             }
             size_t off = addr - range.address;
-            device->vtable->device_write_4(device, off, value);
-            return true;
+            return dispatch_write_4(device, off, value);
         }
     }
     return false;
@@ -255,8 +380,7 @@ bool addr_bus_write_2(address_bus* bus, uint64_t addr, uint16_t value) {
                 return false;
             }
             size_t off = addr - range.address;
-            device->vtable->device_write_2(device, off, value);
-            return true;
+            return dispatch_write_2(device, off, value);
         }
     }
     return false;
@@ -268,8 +392,7 @@ bool addr_bus_write_1(address_bus* bus, uint64_t addr, uint8_t value) {
 
         if(address_intersects(range, addr)) {
             size_t off = addr - range.address;
-            device->vtable->device_write_1(device, off, value);
-            return true;
+            return dispatch_write_1(device, off, value);
         }
     }
     return false;
@@ -285,8 +408,7 @@ bool addr_bus_write_n(address_bus* bus, uint64_t addr, void* in, uint64_t n) {
                 return false;
             }
             size_t off = addr - range.address;
-            device->vtable->device_write_n(device, off, in, n);
-            return true;
+            return dispatch_write_n(device, off, in, n);
         }
     }
     return false;
@@ -302,8 +424,7 @@ bool addr_bus_write_block(address_bus* bus, uint64_t addr, void* in) {
                 return false;
             }
             size_t off = addr - range.address;
-            device->vtable->device_write_block(device, off, in);
-            return true;
+            return dispatch_write_block(device, off, in);
         }
     }
     return false;

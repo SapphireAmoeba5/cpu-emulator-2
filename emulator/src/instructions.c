@@ -1,6 +1,5 @@
 #include "instructions.h"
 #include "cpu.h"
-#include "instruction.h"
 #include "memory.h"
 
 #include <assert.h>
