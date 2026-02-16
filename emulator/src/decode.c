@@ -72,8 +72,8 @@ iop ops[] =
     /* 0x80 */ op_mov, op_invl, op_invl, op_invl, op_invl, op_xor, op_xor, op_xor, op_invl, op_invl, op_invl, op_invl, op_invl, op_invl, op_invl, op_invl,
     /* 0x90 */ op_invl, op_invl, op_invl, op_invl, op_invl, op_cmp, op_cmp, op_cmp, op_invl, op_invl, op_invl, op_invl, op_invl, op_invl, op_invl, op_invl,
     /* 0xa0 */ op_invl, op_invl, op_invl, op_invl, op_invl, op_test, op_test, op_test, op_invl, op_invl, op_invl, op_invl, op_invl, op_invl, op_invl, op_invl,
-    /* 0xb0 */ op_invl, op_invl, op_invl, op_invl, op_invl, op_invl, op_invl, op_invl, op_invl, op_invl, op_invl, op_invl, op_invl, op_invl, op_invl, op_invl,
-    /* 0xc0 */ op_invl, op_invl, op_invl, op_invl, op_invl, op_invl, op_invl, op_invl, op_invl, op_invl, op_invl, op_invl, op_invl, op_invl, op_invl, op_invl,
+    /* 0xb0 */ op_call, op_call, op_call, op_call, op_call, op_call, op_call, op_call, op_call, op_call, op_call, op_call, op_call, op_call, op_call, op_call,
+    /* 0xc0 */ op_mov, op_mov, op_mov, op_mov, op_mov, op_mov, op_mov, op_mov, op_mov, op_mov, op_mov, op_mov, op_mov, op_mov, op_mov, op_mov,
     /* 0xd0 */ op_push, op_push, op_push, op_push, op_push, op_push, op_push, op_push, op_push, op_push, op_push, op_push, op_push, op_push, op_push, op_push,
     /* 0xe0 */ op_pop, op_pop, op_pop, op_pop, op_pop, op_pop, op_pop, op_pop, op_pop, op_pop, op_pop, op_pop, op_pop, op_pop, op_pop, op_pop,
     /* 0xf0 */ op_rdt, op_rdt, op_rdt, op_rdt, op_rdt, op_rdt, op_rdt, op_rdt, op_rdt, op_rdt, op_rdt, op_rdt, op_rdt, op_rdt, op_rdt, op_rdt,
@@ -332,6 +332,15 @@ error_t cpu_decode(Cpu* cpu, instruction* instr, bool* branch_point) {
     if (opcode >= 0xd0 && opcode <= 0xdf || opcode >= 0xe0 && opcode <= 0xef) {
         uint8_t reg_id = opcode & 0x0f;
         instr->dest = &cpu->registers[reg_id].r;
+        return NO_ERROR;
+    }
+    // JMP and CALL with a register operand encoded in the lower 4 bits
+    if(opcode >= 0xc0 && opcode <= 0xcf || opcode >= 0xb0 && opcode <= 0xbf) {
+        *branch_point = true;
+        instr->op_src = op_src_dereference_reg;
+        uint8_t reg_id = opcode & 0x0f;
+        instr->src_reg_id = reg_id; 
+        instr->dest = &cpu->registers[IP_INDEX].r;
         return NO_ERROR;
     }
     // RDT (read timer) instructions (encoded with the lowest 4 bits of the

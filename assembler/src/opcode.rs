@@ -511,6 +511,7 @@ static ENCODING_TABLE: LazyLock<[Vec<InstEncoding>; Mnemonic::COUNT]> = LazyLock
 
         (Mnemonic::Jmp, vec![
             InstEncoding::new(0x10, false, encoding!(JMP), [OperandFlags::DISP32, OperandFlags::empty(), OperandFlags::empty()]),
+            InstEncoding::new(0xc0, false, encoding!(OPCODE_REG), [OperandFlags::GP_REG, OperandFlags::empty(), OperandFlags::empty()]),
         ]),
 
         (Mnemonic::Jz, vec![
@@ -559,6 +560,7 @@ static ENCODING_TABLE: LazyLock<[Vec<InstEncoding>; Mnemonic::COUNT]> = LazyLock
         (Mnemonic::Call, vec![
             // TODO: change opcode
             InstEncoding::new(0x12, false, encoding!(JMP), [OperandFlags::DISP32, OperandFlags::empty(), OperandFlags::empty()]),
+            InstEncoding::new(0xb0, false, encoding!(OPCODE_REG), [OperandFlags::GP_REG, OperandFlags::empty(), OperandFlags::empty()]),
         ]),
 
         (Mnemonic::Ret, vec![
