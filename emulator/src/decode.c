@@ -307,7 +307,7 @@ inline static error_t decode_mem_operand(Cpu* cpu, instruction* instr) {
 
 error_t cpu_decode(Cpu* cpu, instruction* instr, bool* branch_point) {
     memset(instr, 0, sizeof(*instr));
-    uint16_t opcode;
+    uint16_t opcode = 0;
     if (fetch(cpu, (uint8_t*)&opcode) != NO_ERROR) {
         return MEMORY_ERROR;
     }
