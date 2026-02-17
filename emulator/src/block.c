@@ -1,4 +1,5 @@
 #include "block.h"
+#include <stdio.h>
 #include <stdlib.h>
 
 static void resize(block* buf) {
@@ -9,7 +10,7 @@ static void resize(block* buf) {
     buf->instructions = instr;
 }
 
-block instruction_buf_create(uint32_t cap) {
+block instruction_buf_create(uint64_t cap) {
     block buf = {.cap = cap, .len = 0};
     buf.instructions = malloc(sizeof(instruction) * cap);
     return buf;

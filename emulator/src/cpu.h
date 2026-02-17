@@ -19,7 +19,7 @@
 // There should be a sweet spot that prevents slowdown from caching more
 // instructions than get executed in a block, and from caching too few that we
 // need to query the cache more often
-constexpr uint64_t MAX_CACHE_BLOCK = 64;
+constexpr uint64_t MAX_CACHE_BLOCK = 32;
 
 constexpr uint64_t CLOCK_HZ = 500000000;
 

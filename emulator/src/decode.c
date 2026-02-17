@@ -153,7 +153,7 @@ inline static error_t decode_reg_operand(Cpu* cpu, instruction* instr) {
     uint8_t dest = (transfer_byte >> 4) & 0x0f;
 
     instr->dest = &cpu->registers[dest].r;
-    instr->src_reg_id = src;
+    instr->src = &cpu->registers[src].r;
     return NO_ERROR;
 }
 
@@ -266,9 +266,6 @@ inline static error_t decode_bis_address(Cpu* cpu, instruction* instr) {
 inline static error_t decode_pc_rel(Cpu* cpu, instruction* instr) {
     // The PC relative displacement is constant so we can set both registers
     // to be invalid here
-    instr->index_id = INVALID_ID;
-    instr->base_id = INVALID_ID;
-    instr->scale = 1;
     int32_t off = 0;
     if (fetch_4(cpu, (uint32_t*)&off) != NO_ERROR) {
         return MEMORY_ERROR;
@@ -335,11 +332,12 @@ error_t cpu_decode(Cpu* cpu, instruction* instr, bool* branch_point) {
         return NO_ERROR;
     }
     // JMP and CALL with a register operand encoded in the lower 4 bits
-    if(opcode >= 0xc0 && opcode <= 0xcf || opcode >= 0xb0 && opcode <= 0xbf) {
+    else if (opcode >= 0xc0 && opcode <= 0xcf ||
+             opcode >= 0xb0 && opcode <= 0xbf) {
         *branch_point = true;
         instr->op_src = op_src_dereference_reg;
         uint8_t reg_id = opcode & 0x0f;
-        instr->src_reg_id = reg_id; 
+        instr->src = &cpu->registers[reg_id].r;
         instr->dest = &cpu->registers[IP_INDEX].r;
         return NO_ERROR;
     }
@@ -355,7 +353,7 @@ error_t cpu_decode(Cpu* cpu, instruction* instr, bool* branch_point) {
     else if (opcode >= EXT(0xf0) && opcode <= EXT(0xff)) {
         uint8_t reg_id = opcode & 0x0f;
         instr->op_src = op_src_dereference_reg;
-        instr->src_reg_id = SP_INDEX;
+        instr->src = &cpu->registers[SP_INDEX].r;
         instr->dest = &cpu->registers[reg_id].r;
         return NO_ERROR;
     }
@@ -363,22 +361,10 @@ error_t cpu_decode(Cpu* cpu, instruction* instr, bool* branch_point) {
     else if (opcode >= EXT(0xe0) && opcode <= EXT(0xef)) {
         uint8_t reg_id = opcode & 0x0f;
         instr->op_src = op_src_dereference_reg;
-        instr->src_reg_id = reg_id;
+        instr->src = &cpu->registers[reg_id].r;
         instr->dest = &cpu->registers[SP_INDEX].r;
         return NO_ERROR;
     }
-    // Cmov with a reg operand
-    else if(opcode >= EXT(0x00) && opcode <= EXT(0x0d)) {
-        instr->op_src = op_src_dereference_reg;
-        decode_reg_operand(cpu, instr);
-        return NO_ERROR;
-    }
-    // Cmov with a memory operand
-    else if(opcode >= EXT(0x0e) && opcode <= EXT(0x1b)) {
-        instr->op_src = op_src_dereference_mem;
-        decode_mem_operand(cpu, instr);
-        return NO_ERROR;
-    } 
 
     switch (opcode) {
     case 0x00:
@@ -432,6 +418,20 @@ error_t cpu_decode(Cpu* cpu, instruction* instr, bool* branch_point) {
     case 0x85:
     case 0x95:
     case 0xa5:
+    case EXT(0x00):
+    case EXT(0x01):
+    case EXT(0x02):
+    case EXT(0x03):
+    case EXT(0x04):
+    case EXT(0x05):
+    case EXT(0x06):
+    case EXT(0x07):
+    case EXT(0x08):
+    case EXT(0x09):
+    case EXT(0x0a):
+    case EXT(0x0b):
+    case EXT(0x0c):
+    case EXT(0x0d):
         instr->op_src = op_src_dereference_reg;
         return decode_reg_operand(cpu, instr);
     // Data transfer instructions between a register and immediate
@@ -460,6 +460,20 @@ error_t cpu_decode(Cpu* cpu, instruction* instr, bool* branch_point) {
     case 0x87:
     case 0x97:
     case 0xa7:
+    case EXT(0x0e):
+    case EXT(0x0f):
+    case EXT(0x10):
+    case EXT(0x11):
+    case EXT(0x12):
+    case EXT(0x13):
+    case EXT(0x14):
+    case EXT(0x15):
+    case EXT(0x16):
+    case EXT(0x17):
+    case EXT(0x18):
+    case EXT(0x19):
+    case EXT(0x1a):
+    case EXT(0x1b):
         instr->op_src = op_src_dereference_mem;
         return decode_mem_operand(cpu, instr);
 

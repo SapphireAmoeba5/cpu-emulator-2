@@ -5,10 +5,10 @@
 typedef struct {
     // The instructions in this block
     instruction* instructions;
-    uint32_t len;
-    uint32_t cap;
+    uint64_t len;
+    uint64_t cap;
 } block;
 
-block instruction_buf_create(uint32_t cap);
+block instruction_buf_create(uint64_t cap);
 // Copies the instruction to the end of the buffer
 void instruction_buf_append(block* buf, instruction* instr);

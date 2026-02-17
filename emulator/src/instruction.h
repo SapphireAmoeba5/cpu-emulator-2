@@ -2,7 +2,7 @@
 
 #include <stdint.h>
 // Operation for the instruction
-typedef enum {
+typedef enum : uint8_t {
     // Invalid op
     op_invl,
     op_halt,
@@ -28,7 +28,7 @@ typedef enum {
     op_LENGTH,
 } iop;
 
-typedef enum {
+typedef enum : uint8_t {
     op_src_immediate,
     op_src_dereference_reg,
     op_src_dereference_mem,
@@ -38,7 +38,7 @@ typedef enum {
 
 /// This encodes the conditions for operations to be executed. This is how
 /// conditional moves and conditional jumps are implemented
-typedef enum {
+typedef enum : uint8_t {
     // This condition is always true no matter what
     cd_true,
     cd_zero,
@@ -60,16 +60,14 @@ typedef enum {
 typedef struct {
     union {
         uint64_t* dest;
-        // Used when `op` is op_str
-        uint64_t* src;
     };
     // If op_src is none, this stores the immediate value of the src,
-    // if op_src is dereference_reg this is the register id (always a valid id)
-    // If op_src is dereference_mem this is the displacement
+    // if op_src is dereference_reg this is src (a pointer to a registe or some
+    // other value) If op_src is dereference_mem this is the displacement
     union {
         uint64_t immediate;
         uint64_t displacement;
-        uint8_t src_reg_id;
+        uint64_t* src;
     };
     // Memory operand size
     uint8_t size;

@@ -288,7 +288,7 @@ static error_t handle_mov(Cpu* cpu, instruction* instr, uint64_t src) {
 }
 
 static error_t handle_str(Cpu* cpu, instruction* instr, uint64_t address) {
-    uint64_t value = *instr->src;
+    uint64_t value = *instr->dest;
 
     switch (instr->size) {
     case 0:
@@ -393,7 +393,7 @@ static error_t handle_ret(Cpu* cpu, instruction* instr, uint64_t src) {
 }
 
 static error_t handle_push(Cpu* cpu, instruction* instr, uint64_t src) {
-    if (!cpu_push(cpu, *instr->src)) {
+    if (!cpu_push(cpu, *instr->dest)) {
         return MEMORY_ERROR;
     }
     return NO_ERROR;
@@ -425,7 +425,7 @@ error_t cpu_execute(Cpu* cpu, instruction* instr) {
         src = instr->immediate;
         break;
     case op_src_dereference_reg:
-        src = deref_reg(cpu, instr->src_reg_id);
+        src = *instr->src;
         break;
     case op_src_calculate_address:
         src = calculate_addr(cpu, instr);

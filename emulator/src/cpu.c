@@ -4,7 +4,6 @@
 #include "execute.h"
 #include "instruction_cache.h"
 #include "memory.h"
-#include <__stddef_unreachable.h>
 #include <stdbool.h>
 #include <stdckdint.h>
 #include <stdint.h>
