@@ -467,6 +467,96 @@ impl<'a> TokenIter<'a> {
 
             "jge" | "jnl" => Some(Mnemonic::Jge),
             "jl" | "jnge" => Some(Mnemonic::Jl),
+
+            "cmovz" | "cmove" => Some(Mnemonic::Cmovz),
+            "cmovz.u8" | "cmovz.b" | "cmove.u8" | "cmove.b" => Some(Mnemonic::CmovzU8),
+            "cmovz.u16" | "cmovz.q" | "cmove.u16" | "cmove.q" => Some(Mnemonic::CmovzU16),
+            "cmovz.u32" | "cmovz.h" | "cmove.u32" | "cmove.h" => Some(Mnemonic::CmovzU32),
+            "cmovz.u64" | "cmove.u64" => Some(Mnemonic::CmovzU64),
+
+            "cmovnz" | "cmovne" => Some(Mnemonic::Cmovnz),
+            "cmovnz.u8" | "cmovnz.b" | "cmovne.u8" | "cmovne.b" => Some(Mnemonic::CmovnzU8),
+            "cmovnz.u16" | "cmovnz.q" | "cmovne.u16" | "cmovne.q" => Some(Mnemonic::CmovnzU16),
+            "cmovnz.u32" | "cmovnz.h" | "cmovne.u32" | "cmovne.h" => Some(Mnemonic::CmovnzU32),
+            "cmovnz.u64" | "cmovne.u64" => Some(Mnemonic::CmovnzU64),
+
+            "cmovc" | "cmovb" | "cmovnae" => Some(Mnemonic::Cmovc),
+            "cmovc.u8" | "cmovc.b" | "cmovb.u8" | "cmovb.b" | "cmovnae.u8" | "cmovnae.b" => Some(Mnemonic::CmovcU8),
+            "cmovc.u16" | "cmovc.q" | "cmovb.u16" | "cmovb.q" | "cmovnae.u16" | "cmovnae.q" => Some(Mnemonic::CmovcU16),
+            "cmovc.u32" | "cmovc.h" | "cmovb.u32" | "cmovb.h" | "cmovnae.u32" | "cmovnae.h" => Some(Mnemonic::CmovcU32),
+            "cmovc.u64" | "cmovb.u64" | "cmovnae.u64" => Some(Mnemonic::CmovcU64),
+
+            "cmovnc" | "cmovae" | "cmovnb" => Some(Mnemonic::Cmovnc),
+            "cmovnc.u8" | "cmovnc.b" | "cmovae.u8" | "cmovae.b" | "cmovnb.u8" | "cmovnb.b" => Some(Mnemonic::CmovncU8),
+            "cmovnc.u16" | "cmovnc.q" | "cmovae.u16" | "cmovae.q" | "cmovnb.u16" | "cmovnb.q" => Some(Mnemonic::CmovncU16),
+            "cmovnc.u32" | "cmovnc.h" | "cmovae.u32" | "cmovae.h" | "cmovnb.u32" | "cmovnb.h" => Some(Mnemonic::CmovncU32),
+            "cmovnc.u64" | "cmovae.u64" | "cmovnb.u64" => Some(Mnemonic::CmovncU64),
+
+
+            "cmovo" => Some(Mnemonic::Cmovo),
+            "cmovo.u8" | "cmovo.b" => Some(Mnemonic::CmovoU8),
+            "cmovo.u16" | "cmovo.q" => Some(Mnemonic::CmovoU16),
+            "cmovo.u32" | "cmovo.h" => Some(Mnemonic::CmovoU32),
+            "cmovo.u64" => Some(Mnemonic::CmovoU64),
+
+            "cmovno" => Some(Mnemonic::Cmovno),
+            "cmovno.u8" | "cmovno.b" => Some(Mnemonic::CmovnoU8),
+            "cmovno.u16" | "cmovno.q" => Some(Mnemonic::CmovnoU16),
+            "cmovno.u32" | "cmovno.h" => Some(Mnemonic::CmovnoU32),
+            "cmovno.u64" => Some(Mnemonic::CmovnoU64),
+
+
+            "cmovs" => Some(Mnemonic::Cmovs),
+            "cmovs.u8" | "cmovs.b" => Some(Mnemonic::CmovsU8),
+            "cmovs.u16" | "cmovs.q" => Some(Mnemonic::CmovsU16),
+            "cmovs.u32" | "cmovs.h" => Some(Mnemonic::CmovsU32),
+            "cmovs.u64" => Some(Mnemonic::CmovsU64),
+
+            "cmovns" => Some(Mnemonic::Cmovns),
+            "cmovns.u8" | "cmovns.b" => Some(Mnemonic::CmovnsU8),
+            "cmovns.u16" | "cmovns.q" => Some(Mnemonic::CmovnsU16),
+            "cmovns.u32" | "cmovns.h" => Some(Mnemonic::CmovnsU32),
+            "cmovns.u64" => Some(Mnemonic::CmovnsU64),
+
+
+            "cmova" | "cmovnbe" => Some(Mnemonic::Cmova),
+            "cmova.u8" | "cmova.b" | "cmovnbe.u8" | "cmovnbe.b" => Some(Mnemonic::CmovaU8),
+            "cmova.u16" | "cmova.q" | "cmovnbe.u16" | "cmovnbe.q" => Some(Mnemonic::CmovaU16),
+            "cmova.u32" | "cmova.h" | "cmovnbe.u32" | "cmovnbe.h" => Some(Mnemonic::CmovaU32),
+            "cmova.u64" | "cmovnbe.u64" => Some(Mnemonic::CmovaU64),
+
+            "cmovbe" | "cmovna" => Some(Mnemonic::Cmovbe),
+            "cmovbe.u8" | "cmovbe.b" | "cmovna.u8" | "cmovna.b" => Some(Mnemonic::CmovbeU8),
+            "cmovbe.u16" | "cmovbe.q" | "cmovna.u16" | "cmovna.q" => Some(Mnemonic::CmovbeU16),
+            "cmovbe.u32" | "cmovbe.h" | "cmovna.u32" | "cmovna.h" => Some(Mnemonic::CmovbeU32),
+            "cmovbe.u64" | "cmovna.u64" => Some(Mnemonic::CmovbeU64),
+
+
+            "cmovg" | "cmovnle" => Some(Mnemonic::Cmovg),
+            "cmovg.u8" | "cmovg.b" | "cmovnle.u8" | "cmovnle.b" => Some(Mnemonic::CmovgU8),
+            "cmovg.u16" | "cmovg.q" | "cmovnle.u16" | "cmovnle.q" => Some(Mnemonic::CmovgU16),
+            "cmovg.u32" | "cmovg.h" | "cmovnle.u32" | "cmovnle.h" => Some(Mnemonic::CmovgU32),
+            "cmovg.u64" | "cmovnle.u64" => Some(Mnemonic::CmovgU64),
+
+            "cmovle" | "cmovng" => Some(Mnemonic::Cmovle),
+            "cmovle.u8" | "cmovle.b" | "cmovng.u8" | "cmovng.b" => Some(Mnemonic::CmovleU8),
+            "cmovle.u16" | "cmovle.q" | "cmovng.u16" | "cmovng.q" => Some(Mnemonic::CmovleU16),
+            "cmovle.u32" | "cmovle.h" | "cmovng.u32" | "cmovng.h" => Some(Mnemonic::CmovleU32),
+            "cmovle.u64" | "cmovng.u64" => Some(Mnemonic::CmovleU64),
+
+
+            "cmovge" | "cmovnl" => Some(Mnemonic::Cmovge),
+            "cmovge.u8" | "cmovge.b" | "cmovnl.u8" | "cmovnl.b" => Some(Mnemonic::CmovgeU8),
+            "cmovge.u16" | "cmovge.q" | "cmovnl.u16" | "cmovnl.q" => Some(Mnemonic::CmovgeU16),
+            "cmovge.u32" | "cmovge.h" | "cmovnl.u32" | "cmovnl.h" => Some(Mnemonic::CmovgeU32),
+            "cmovge.u64" | "cmovnl.u64" => Some(Mnemonic::CmovgeU64),
+
+            "cmovl" | "cmovnge" => Some(Mnemonic::Cmovl),
+            "cmovl.u8" | "cmovl.b" | "cmovnge.u8" | "cmovnge.b" => Some(Mnemonic::CmovlU8),
+            "cmovl.u16" | "cmovl.q" | "cmovnge.u16" | "cmovnge.q" => Some(Mnemonic::CmovlU16),
+            "cmovl.u32" | "cmovl.h" | "cmovnge.u32" | "cmovnge.h" => Some(Mnemonic::CmovlU32),
+            "cmovl.u64" | "cmovnge.u64" => Some(Mnemonic::CmovlU64),
+
             
             "call" => Some(Mnemonic::Call),
             "ret" => Some(Mnemonic::Ret),

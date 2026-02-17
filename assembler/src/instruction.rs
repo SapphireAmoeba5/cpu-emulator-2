@@ -22,6 +22,8 @@ pub struct Instruction {
 pub enum Mnemonic {
     Halt,
     Mov,
+
+
     MovU8,
     MovU16,
     MovU32,
@@ -119,6 +121,96 @@ pub enum Mnemonic {
 
     Jge,
     Jl,
+
+    Cmovnz,
+    CmovnzU8,
+    CmovnzU16,
+    CmovnzU32,
+    CmovnzU64,
+
+    Cmovz,
+    CmovzU8,
+    CmovzU16,
+    CmovzU32,
+    CmovzU64,
+
+    Cmovc,
+    CmovcU8,
+    CmovcU16,
+    CmovcU32,
+    CmovcU64,
+
+    Cmovnc,
+    CmovncU8,
+    CmovncU16,
+    CmovncU32,
+    CmovncU64,
+
+
+    Cmovo,
+    CmovoU8,
+    CmovoU16,
+    CmovoU32,
+    CmovoU64,
+
+    Cmovno,
+    CmovnoU8,
+    CmovnoU16,
+    CmovnoU32,
+    CmovnoU64,
+
+
+    Cmovs,
+    CmovsU8,
+    CmovsU16,
+    CmovsU32,
+    CmovsU64,
+
+    Cmovns,
+    CmovnsU8,
+    CmovnsU16,
+    CmovnsU32,
+    CmovnsU64,
+
+
+    Cmova,
+    CmovaU8,
+    CmovaU16,
+    CmovaU32,
+    CmovaU64,
+
+    Cmovbe,
+    CmovbeU8,
+    CmovbeU16,
+    CmovbeU32,
+    CmovbeU64,
+
+
+    Cmovg,
+    CmovgU8,
+    CmovgU16,
+    CmovgU32,
+    CmovgU64,
+
+    Cmovle,
+    CmovleU8,
+    CmovleU16,
+    CmovleU32,
+    CmovleU64,
+
+    
+    Cmovge,
+    CmovgeU8,
+    CmovgeU16,
+    CmovgeU32,
+    CmovgeU64,
+
+    Cmovl,
+    CmovlU8,
+    CmovlU16,
+    CmovlU32,
+    CmovlU64,
+
 
     Call,
     Ret,

@@ -1,7 +1,7 @@
 #pragma once
 
-#include "instruction_cache.h"
 #include "address_bus.h"
+#include "instruction_cache.h"
 #include "timer.h"
 #include <stdbool.h>
 #include <stdint.h>
@@ -16,7 +16,10 @@
 #endif
 
 // Maximum amount of instructions to cache if there were no branch points
-constexpr uint64_t MAX_CACHE_BLOCK = 128;
+// There should be a sweet spot that prevents slowdown from caching more
+// instructions than get executed in a block, and from caching too few that we
+// need to query the cache more often
+constexpr uint64_t MAX_CACHE_BLOCK = 64;
 
 constexpr uint64_t CLOCK_HZ = 500000000;
 
@@ -50,7 +53,8 @@ typedef struct Cpu {
     address_bus* bus;
     // Total number of clocks
     uint64_t clock_count;
-    // 16 general purpose registers plus the stack pointer and instruction pointer
+    // 16 general purpose registers plus the stack pointer and instruction
+    // pointer
     reg registers[16 + 2];
 
     // If the CPU is halted
@@ -62,6 +66,13 @@ typedef struct Cpu {
 
     instruction_cache cache;
     timer timer;
+
+    // If the cache is valid
+    bool valid_fetch_cache;
+    // Where the cache is
+    uint64_t fetch_cache_address;
+    // This is the cache that is used when fetching instructions
+    uint8_t fetch_cache[BLOCK_SIZE];
 } Cpu;
 
 bool cpu_write_8(Cpu* cpu, uint64_t data, uint64_t address);

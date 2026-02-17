@@ -5,7 +5,7 @@
 
 typedef struct {
     // Implementation defined
-    mach_timebase_info_data_t timebase;
+    double scale;
     uint64_t start;
 } timer;
 

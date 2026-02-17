@@ -82,8 +82,8 @@ iop ops[] =
 // Operations for the extended opcodes
 iop ext_ops[] =
 {
-    /* 0x00 */ op_invl, op_invl, op_invl, op_invl, op_invl, op_invl, op_invl, op_invl, op_invl, op_invl, op_invl, op_invl, op_invl, op_invl, op_invl, op_invl,
-    /* 0x10 */ op_invl, op_invl, op_invl, op_invl, op_invl, op_invl, op_invl, op_invl, op_invl, op_invl, op_invl, op_invl, op_invl, op_invl, op_invl, op_invl,
+    /* 0x00 */ op_mov, op_mov, op_mov, op_mov, op_mov, op_mov, op_mov, op_mov, op_mov, op_mov, op_mov, op_mov, op_mov, op_mov, op_mov, op_mov,
+    /* 0x10 */ op_mov, op_mov, op_mov, op_mov, op_mov, op_mov, op_mov, op_mov, op_mov, op_mov, op_mov, op_mov, op_invl, op_invl, op_invl, op_invl,
     /* 0x20 */ op_invl, op_invl, op_invl, op_invl, op_invl, op_invl, op_invl, op_invl, op_invl, op_invl, op_invl, op_invl, op_invl, op_invl, op_invl, op_invl,
     /* 0x30 */ op_invl, op_invl, op_invl, op_invl, op_invl, op_invl, op_invl, op_invl, op_invl, op_invl, op_invl, op_invl, op_invl, op_invl, op_invl, op_invl,
     /* 0x40 */ op_invl, op_invl, op_invl, op_invl, op_invl, op_invl, op_invl, op_invl, op_invl, op_invl, op_invl, op_invl, op_invl, op_invl, op_invl, op_invl,
@@ -121,8 +121,8 @@ condition conditions[] =
 };
 
 condition ext_conditions[] = {
-    /* 0x00 */ cd_true, cd_true, cd_true, cd_true, cd_true, cd_true, cd_true, cd_true, cd_true, cd_true, cd_true, cd_true, cd_true, cd_true, cd_true, cd_true, 
-    /* 0x10 */ cd_true, cd_true, cd_true, cd_true, cd_true, cd_true, cd_true, cd_true, cd_true, cd_true, cd_true, cd_true, cd_true, cd_true, cd_true, cd_true, 
+    /* 0x00 */ cd_nzero, cd_zero, cd_carry, cd_ncarry, cd_overflow, cd_noverflow, cd_sign, cd_nsign, cd_above, cd_be, cd_greater, cd_le, cd_ge, cd_less, cd_nzero, cd_zero, 
+    /* 0x10 */ cd_carry, cd_ncarry, cd_overflow, cd_noverflow, cd_sign, cd_nsign, cd_above, cd_be, cd_greater, cd_le, cd_ge, cd_less, cd_true, cd_true, cd_true, cd_true, 
     /* 0x20 */ cd_true, cd_true, cd_true, cd_true, cd_true, cd_true, cd_true, cd_true, cd_true, cd_true, cd_true, cd_true, cd_true, cd_true, cd_true, cd_true, 
     /* 0x30 */ cd_true, cd_true, cd_true, cd_true, cd_true, cd_true, cd_true, cd_true, cd_true, cd_true, cd_true, cd_true, cd_true, cd_true, cd_true, cd_true, 
     /* 0x40 */ cd_true, cd_true, cd_true, cd_true, cd_true, cd_true, cd_true, cd_true, cd_true, cd_true, cd_true, cd_true, cd_true, cd_true, cd_true, cd_true, 
@@ -367,6 +367,18 @@ error_t cpu_decode(Cpu* cpu, instruction* instr, bool* branch_point) {
         instr->dest = &cpu->registers[SP_INDEX].r;
         return NO_ERROR;
     }
+    // Cmov with a reg operand
+    else if(opcode >= EXT(0x00) && opcode <= EXT(0x0d)) {
+        instr->op_src = op_src_dereference_reg;
+        decode_reg_operand(cpu, instr);
+        return NO_ERROR;
+    }
+    // Cmov with a memory operand
+    else if(opcode >= EXT(0x0e) && opcode <= EXT(0x1b)) {
+        instr->op_src = op_src_dereference_mem;
+        decode_mem_operand(cpu, instr);
+        return NO_ERROR;
+    } 
 
     switch (opcode) {
     case 0x00:
@@ -380,7 +392,7 @@ error_t cpu_decode(Cpu* cpu, instruction* instr, bool* branch_point) {
         instr->op_src = op_src_immediate;
         return fetch(cpu, (uint8_t*)&instr->immediate);
 
-    // Read timer frequency
+    // RDTF (Read timer frequency)
     case 0x02:
         instr->op_src = op_src_immediate;
         instr->dest = &cpu->registers[0].r;
