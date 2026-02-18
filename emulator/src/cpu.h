@@ -1,6 +1,7 @@
 #pragma once
 
 #include "address_bus.h"
+#include "data_cache.h"
 #include "instruction_cache.h"
 #include "timer.h"
 #include <stdbool.h>
@@ -67,12 +68,9 @@ typedef struct Cpu {
     instruction_cache cache;
     timer timer;
 
-    // If the cache is valid
-    bool valid_fetch_cache;
-    // Where the cache is
-    uint64_t fetch_cache_address;
-    // This is the cache that is used when fetching instructions
-    uint8_t fetch_cache[BLOCK_SIZE];
+    cache instruction_cache;
+    cache data_cache;
+
 } Cpu;
 
 bool cpu_write_8(Cpu* cpu, uint64_t data, uint64_t address);

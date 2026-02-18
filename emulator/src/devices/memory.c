@@ -12,124 +12,51 @@ const bus_device_vtable memory_vtable = {
     .device_init = memory_init,
     .device_destroy = memory_destroy,
 
-    .device_read_8 = memory_read_8,
-    .device_read_4 = memory_read_4,
-    .device_read_2 = memory_read_2,
-    .device_read_1 = memory_read_1,
-    .device_read_n = memory_read_n,
     .device_read_block = memory_read_block,
-
-    .device_write_8 = memory_write_8,
-    .device_write_4 = memory_write_4,
-    .device_write_2 = memory_write_2,
-    .device_write_1 = memory_write_1,
-    .device_write_n = memory_write_n,
     .device_write_block = memory_write_block,
 };
 
-typedef struct memory {
-    const bus_device_vtable* vtable;
-    device_type type;
-    uint8_t* data;
-    size_t length;
-} memory;
-
-memory* memory_create() {
+memory* memory_create(uint64_t blocks) {
     memory* mem = malloc(sizeof(memory));
+    mem->vtable = &memory_vtable;
+    mem->type = device_memory;
 
     if(mem == NULL) {
         return NULL;
     }
 
-    mem->vtable = &memory_vtable;
-    mem->type = device_memory;
+    mem->data = malloc(blocks * BLOCK_SIZE);
+    mem->length = blocks * BLOCK_SIZE;
+
+    if(mem->data == NULL) {
+        free(mem);
+        return NULL;
+    }
 
     return mem;
 }
 
-bool memory_init(bus_device* bus, size_t length) {
+bool memory_init(bus_device* bus, uint64_t* requested_range) {
     memory* mem = (memory*)bus;
-
-    mem->length = length;
-    mem->data = malloc(length);
-
-    if(mem->data == NULL) {
-        return false;
-    }
-
+    *requested_range = mem->length / BLOCK_SIZE;
     return true;
 }
 
 bool memory_destroy(bus_device* bus) {
     memory* mem = (memory*)bus;
     free(mem->data);
+    mem->length = 0;
     return false;
 }
 
-bool memory_read_8(bus_device* bus, uint64_t addr, uint64_t* out) {
+bool memory_read_block(bus_device *bus, uint64_t block, void *out) {
     memory* mem = (memory*)bus;
-    memcpy(out, &mem->data[addr], sizeof(*out));
-    return true;
-}
-bool memory_read_4(bus_device* bus, uint64_t addr, uint32_t* out) {
-    memory* mem = (memory*)bus;
-    memcpy(out, &mem->data[addr], sizeof(*out));
-    return true;
-}
-bool memory_read_2(bus_device* bus, uint64_t addr, uint16_t* out) {
-    memory* mem = (memory*)bus;
-    memcpy(out, &mem->data[addr], sizeof(*out));
-    return true;
-}
-bool memory_read_1(bus_device* bus, uint64_t addr, uint8_t* out) {
-    memory* mem = (memory*)bus;
-    memcpy(out, &mem->data[addr], sizeof(*out));
+    memcpy(out, &mem->data[block * BLOCK_SIZE], BLOCK_SIZE);
     return true;
 }
 
-bool memory_read_n(bus_device *bus, uint64_t addr, void *out, uint64_t n) {
+bool memory_write_block(bus_device *bus, uint64_t block, void *in) {
     memory* mem = (memory*)bus;
-    memcpy(out, &mem->data[addr], n);
-    return true;
-}
-
-bool memory_read_block(bus_device *bus, uint64_t addr, void *out) {
-    memory* mem = (memory*)bus;
-    memcpy(out, &mem->data[addr], BLOCK_SIZE);
-    return true;
-}
-
-bool memory_write_8(bus_device* bus, uint64_t addr, uint64_t value) {
-    memory* mem = (memory*)bus;
-    memcpy(&mem->data[addr], &value, sizeof(value));
-    return true;
-}
-bool memory_write_4(bus_device* bus, uint64_t addr, uint32_t value) {
-    memory* mem = (memory*)bus;
-    memcpy(&mem->data[addr], &value, sizeof(value));
-    return true;
-
-}
-bool memory_write_2(bus_device* bus, uint64_t addr, uint16_t value) {
-    memory* mem = (memory*)bus;
-    memcpy(&mem->data[addr], &value, sizeof(value));
-    return true;
-
-}
-bool memory_write_1(bus_device* bus, uint64_t addr, uint8_t value) {
-    memory* mem = (memory*)bus;
-    memcpy(&mem->data[addr], &value, sizeof(value));
-    return true;
-}
-
-bool memory_write_n(bus_device *bus, uint64_t addr, void *in, uint64_t n) {
-    memory* mem = (memory*)bus;
-    memcpy(&mem->data[addr], in, n);
-    return true;
-}
-
-bool memory_write_block(bus_device *bus, uint64_t addr, void *in) {
-    memory* mem = (memory*)bus;
-    memcpy(&mem->data[addr], in, BLOCK_SIZE);
+    memcpy(&mem->data[block * BLOCK_SIZE], in, BLOCK_SIZE);
     return true;
 }

@@ -5,19 +5,20 @@
 
 #include "bus_device.h"
 
-/// Must at least be 64 bytes and divisble by 16
+/// Must at least be 64 bytes and divisble by 64
 constexpr uint64_t BLOCK_SIZE = 64;
 
-typedef struct addr_range {
-    uint64_t address;
-    uint64_t range;
-} addr_range;
 
-inline static bool intersects(addr_range left, addr_range right) {
-    if (left.address <= right.address &&
-            left.address + left.range >= right.address ||
-        right.address <= left.address &&
-            right.address + right.range >= left.address) {
+typedef struct {
+    uint64_t base;
+    uint64_t range;
+} block_range;
+
+inline static bool intersects(block_range left, block_range right) {
+    if (left.base <= right.base &&
+            left.base + left.range >= right.base ||
+        right.base <= left.base &&
+            right.base + right.range >= left.base) {
         return true;
     }
 
@@ -33,7 +34,7 @@ inline static bool intersects(addr_range left, addr_range right) {
 constexpr size_t MAX_DEVICES = 30;
 
 typedef struct address_bus {
-    addr_range ranges[MAX_DEVICES];
+    block_range ranges[MAX_DEVICES];
     bus_device* devices[MAX_DEVICES];
     size_t num_devices;
 } address_bus;
@@ -50,37 +51,12 @@ void addr_bus_destroy(address_bus* bus);
 // heap.
 //
 // If the function returns true then the caller can safely free the device
-bool addr_bus_add_device(address_bus* bus, addr_range range,
+bool addr_bus_add_device(address_bus* bus,
                          bus_device* device);
 // Prints the state of the address bus to stdout
 void addr_bus_pretty_print(address_bus* bus);
 // Evaluates if this range intersects any devices already in the bus
-bool addr_bus_intersects(address_bus* bus, addr_range range);
+bool addr_bus_intersects(address_bus* bus, block_range range);
 
-// Returns false if there was an error reading the value
-bool addr_bus_read_8(address_bus* bus, uint64_t addr, uint64_t* out);
-// Returns false if there was an error reading the value
-bool addr_bus_read_4(address_bus* bus, uint64_t addr, uint32_t* out);
-// Returns false if there was an error reading the value
-bool addr_bus_read_2(address_bus* bus, uint64_t addr, uint16_t* out);
-// Returns false if there was an error reading the value
-bool addr_bus_read_1(address_bus* bus, uint64_t addr, uint8_t* out);
-// Returns false if there was an error reading the value
-bool addr_bus_read_n(address_bus* bus, uint64_t addr, void* out, uint64_t n);
-// Returns false if there was an error reading the value.
-// Reads `BLOCK_SIZE` bytes
-bool addr_bus_read_block(address_bus* bus, uint64_t addr, void* out);
-
-// Returns false if there was an error writing the value
-bool addr_bus_write_8(address_bus* bus, uint64_t addr, uint64_t value);
-// Returns false if there was an error writing the value
-bool addr_bus_write_4(address_bus* bus, uint64_t addr, uint32_t value);
-// Returns false if there was an error writing the value
-bool addr_bus_write_2(address_bus* bus, uint64_t addr, uint16_t value);
-// Returns false if there was an error writing the value
-bool addr_bus_write_1(address_bus* bus, uint64_t addr, uint8_t value);
-// Returns false if there was an error writing the value
-bool addr_bus_write_n(address_bus* bus, uint64_t addr, void* in, uint64_t n);
-// Returns false if there was an error reading the value.
-// Writes `BLOCK_SIZE` bytes
+bool addr_bus_write_block(address_bus* bus, uint64_t addr, void* out);
 bool addr_bus_read_block(address_bus* bus, uint64_t addr, void* in);

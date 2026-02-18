@@ -1,5 +1,6 @@
 #include "cpu.h"
 #include "address_bus.h"
+#include "data_cache.h"
 #include "decode.h"
 #include "execute.h"
 #include "instruction_cache.h"
@@ -13,41 +14,271 @@
 #include <time.h>
 
 bool cpu_write_8(Cpu* cpu, uint64_t data, uint64_t address) {
-    return addr_bus_write_8(cpu->bus, address, data);
+    printf("Address: %llu\n", address);
+    if (address % 8 != 0) {
+        return false;
+    }
+
+    uint64_t aligned = align_to_block_boundary(address);
+    int cache_line = get_cache_line(aligned);
+
+    // Keep the dirty flag set since we are about to write here anyways
+    if (cpu->data_cache.addresses[cache_line] != aligned) {
+        if (cpu->data_cache.dirty[cache_line]) {
+            if (!addr_bus_write_block(cpu->bus,
+                                      cpu->data_cache.addresses[cache_line],
+                                      &cpu->data_cache.lines[cache_line])) {
+                cpu->data_cache.dirty[cache_line] = false;
+                cpu->data_cache.addresses[cache_line] = UNOCCUPIED_LINE;
+                return false;
+            }
+        }
+
+        if (!addr_bus_read_block(cpu->bus, aligned,
+                                 &cpu->data_cache.lines[cache_line])) {
+            cpu->data_cache.dirty[cache_line] = false;
+            cpu->data_cache.addresses[cache_line] = UNOCCUPIED_LINE;
+            return false;
+        }
+        cpu->data_cache.addresses[cache_line] = aligned;
+    }
+
+    uint64_t offset = address - aligned;
+    // No bounds checks, garunteed to fit
+    memcpy(&cpu->data_cache.lines[cache_line][offset], &data, 8);
+    return true;
 }
 bool cpu_write_4(Cpu* cpu, uint32_t data, uint64_t address) {
-    return addr_bus_write_4(cpu->bus, address, data);
+    if (address % 4 != 0) {
+        return false;
+    }
+
+    uint64_t aligned = align_to_block_boundary(address);
+    int cache_line = get_cache_line(aligned);
+
+    // Keep the dirty flag set since we are about to write here anyways
+    if (cpu->data_cache.addresses[cache_line] != aligned) {
+        if (cpu->data_cache.dirty[cache_line]) {
+            if (!addr_bus_write_block(cpu->bus,
+                                      cpu->data_cache.addresses[cache_line],
+                                      &cpu->data_cache.lines[cache_line])) {
+                cpu->data_cache.dirty[cache_line] = false;
+                cpu->data_cache.addresses[cache_line] = UNOCCUPIED_LINE;
+                return false;
+            }
+        }
+
+        if (!addr_bus_read_block(cpu->bus, aligned,
+                                 &cpu->data_cache.lines[cache_line])) {
+            cpu->data_cache.dirty[cache_line] = false;
+            cpu->data_cache.addresses[cache_line] = UNOCCUPIED_LINE;
+            return false;
+        }
+        cpu->data_cache.addresses[cache_line] = aligned;
+    }
+
+    uint64_t offset = address - aligned;
+    // No bounds checks, garunteed to fit
+    memcpy(&cpu->data_cache.lines[cache_line][offset], &data, 4);
+    return true;
 }
 
 bool cpu_write_2(Cpu* cpu, uint16_t data, uint64_t address) {
-    return addr_bus_write_2(cpu->bus, address, data);
+    if (address % 2 != 0) {
+        return false;
+    }
+
+    uint64_t aligned = align_to_block_boundary(address);
+    int cache_line = get_cache_line(aligned);
+
+    // Keep the dirty flag set since we are about to write here anyways
+    if (cpu->data_cache.addresses[cache_line] != aligned) {
+        if (cpu->data_cache.dirty[cache_line]) {
+            if (!addr_bus_write_block(cpu->bus,
+                                      cpu->data_cache.addresses[cache_line],
+                                      &cpu->data_cache.lines[cache_line])) {
+                cpu->data_cache.dirty[cache_line] = false;
+                cpu->data_cache.addresses[cache_line] = UNOCCUPIED_LINE;
+                return false;
+            }
+        }
+
+        if (!addr_bus_read_block(cpu->bus, aligned,
+                                 &cpu->data_cache.lines[cache_line])) {
+            cpu->data_cache.dirty[cache_line] = false;
+            cpu->data_cache.addresses[cache_line] = UNOCCUPIED_LINE;
+            return false;
+        }
+        cpu->data_cache.addresses[cache_line] = aligned;
+    }
+
+    uint64_t offset = address - aligned;
+    // No bounds checks, garunteed to fit
+    memcpy(&cpu->data_cache.lines[cache_line][offset], &data, 2);
+    return true;
 }
 
 bool cpu_write_1(Cpu* cpu, uint8_t data, uint64_t address) {
-    return addr_bus_write_1(cpu->bus, address, data);
+    uint64_t aligned = align_to_block_boundary(address);
+    int cache_line = get_cache_line(aligned);
+
+    // Keep the dirty flag set since we are about to write here anyways
+    if (cpu->data_cache.addresses[cache_line] != aligned) {
+        if (cpu->data_cache.dirty[cache_line]) {
+            if (!addr_bus_write_block(cpu->bus,
+                                      cpu->data_cache.addresses[cache_line],
+                                      &cpu->data_cache.lines[cache_line])) {
+                cpu->data_cache.dirty[cache_line] = false;
+                cpu->data_cache.addresses[cache_line] = UNOCCUPIED_LINE;
+                return false;
+            }
+        }
+
+        if (!addr_bus_read_block(cpu->bus, aligned,
+                                 &cpu->data_cache.lines[cache_line])) {
+            cpu->data_cache.dirty[cache_line] = false;
+            cpu->data_cache.addresses[cache_line] = UNOCCUPIED_LINE;
+            return false;
+        }
+        cpu->data_cache.addresses[cache_line] = aligned;
+    }
+
+    uint64_t offset = address - aligned;
+    // No bounds checks, garunteed to fit
+    memcpy(&cpu->data_cache.lines[cache_line][offset], &data, 1);
+    return true;
 }
 
 bool cpu_read_8(Cpu* cpu, uint64_t address, uint64_t* value) {
-    return addr_bus_read_8(cpu->bus, address, value);
+    if (address % 8 != 0) {
+        return false;
+    }
+
+    uint64_t aligned = align_to_block_boundary(address);
+    int cache_line = get_cache_line(aligned);
+
+    if (cpu->data_cache.addresses[cache_line] != aligned) {
+        bool dirty = cpu->data_cache.dirty[cache_line];
+        cpu->data_cache.dirty[cache_line] = false;
+        if (dirty) {
+            if (!addr_bus_write_block(cpu->bus,
+                                      cpu->data_cache.addresses[cache_line],
+                                      &cpu->data_cache.lines[cache_line])) {
+                cpu->data_cache.addresses[cache_line] = UNOCCUPIED_LINE;
+                return false;
+            }
+        }
+
+        if (!addr_bus_read_block(cpu->bus, aligned,
+                                 &cpu->data_cache.lines[cache_line])) {
+            cpu->data_cache.addresses[cache_line] = UNOCCUPIED_LINE;
+            return false;
+        }
+        cpu->data_cache.addresses[cache_line] = aligned;
+    }
+
+    uint64_t offset = address - aligned;
+    // No bounds checks, garunteed to fit
+    memcpy(value, &cpu->data_cache.lines[cache_line][offset], 8);
+    return true;
 }
 
 bool cpu_read_4(Cpu* cpu, uint64_t address, uint32_t* value) {
-    return addr_bus_read_4(cpu->bus, address, value);
+    if (address % 4 != 0) {
+        return false;
+    }
+
+    uint64_t aligned = align_to_block_boundary(address);
+    int cache_line = get_cache_line(aligned);
+
+    if (cpu->data_cache.addresses[cache_line] != aligned) {
+        bool dirty = cpu->data_cache.dirty[cache_line];
+        cpu->data_cache.dirty[cache_line] = false;
+        if (dirty) {
+            if (!addr_bus_write_block(cpu->bus,
+                                      cpu->data_cache.addresses[cache_line],
+                                      &cpu->data_cache.lines[cache_line])) {
+                cpu->data_cache.addresses[cache_line] = UNOCCUPIED_LINE;
+                return false;
+            }
+        }
+
+        if (!addr_bus_read_block(cpu->bus, aligned,
+                                 &cpu->data_cache.lines[cache_line])) {
+            cpu->data_cache.addresses[cache_line] = UNOCCUPIED_LINE;
+            return false;
+        }
+        cpu->data_cache.addresses[cache_line] = aligned;
+    }
+
+    uint64_t offset = address - aligned;
+    // No bounds checks, garunteed to fit
+    memcpy(value, &cpu->data_cache.lines[cache_line][offset], 4);
+    return true;
 }
 
 bool cpu_read_2(Cpu* cpu, uint64_t address, uint16_t* value) {
-    return addr_bus_read_2(cpu->bus, address, value);
+    if (address % 2 != 0) {
+        return false;
+    }
+
+    uint64_t aligned = align_to_block_boundary(address);
+    int cache_line = get_cache_line(aligned);
+
+    if (cpu->data_cache.addresses[cache_line] != aligned) {
+        bool dirty = cpu->data_cache.dirty[cache_line];
+        cpu->data_cache.dirty[cache_line] = false;
+        if (dirty) {
+            if (!addr_bus_write_block(cpu->bus,
+                                      cpu->data_cache.addresses[cache_line],
+                                      &cpu->data_cache.lines[cache_line])) {
+                cpu->data_cache.addresses[cache_line] = UNOCCUPIED_LINE;
+                return false;
+            }
+        }
+
+        if (!addr_bus_read_block(cpu->bus, aligned,
+                                 &cpu->data_cache.lines[cache_line])) {
+            cpu->data_cache.addresses[cache_line] = UNOCCUPIED_LINE;
+            return false;
+        }
+        cpu->data_cache.addresses[cache_line] = aligned;
+    }
+
+    uint64_t offset = address - aligned;
+    // No bounds checks, garunteed to fit
+    memcpy(value, &cpu->data_cache.lines[cache_line][offset], 2);
+    return true;
 }
 
 bool cpu_read_1(Cpu* cpu, uint64_t address, uint8_t* value) {
-    return addr_bus_read_1(cpu->bus, address, value);
-}
+    uint64_t aligned = align_to_block_boundary(address);
+    int cache_line = get_cache_line(aligned);
 
-bool cpu_read_n(Cpu* cpu, uint64_t address, void* out, uint64_t n) {
-    return addr_bus_read_n(cpu->bus, address, out, n);
-}
-bool cpu_read_block(Cpu* cpu, uint64_t address, void* out) {
-    return addr_bus_read_block(cpu->bus, address, out);
+    if (cpu->data_cache.addresses[cache_line] != aligned) {
+        bool dirty = cpu->data_cache.dirty[cache_line];
+        cpu->data_cache.dirty[cache_line] = false;
+        if (dirty) {
+            if (!addr_bus_write_block(cpu->bus,
+                                      cpu->data_cache.addresses[cache_line],
+                                      &cpu->data_cache.lines[cache_line])) {
+                cpu->data_cache.addresses[cache_line] = UNOCCUPIED_LINE;
+                return false;
+            }
+        }
+
+        if (!addr_bus_read_block(cpu->bus, aligned,
+                                 &cpu->data_cache.lines[cache_line])) {
+            cpu->data_cache.addresses[cache_line] = UNOCCUPIED_LINE;
+            return false;
+        }
+        cpu->data_cache.addresses[cache_line] = aligned;
+    }
+
+    uint64_t offset = address - aligned;
+    // No bounds checks, garunteed to fit
+    memcpy(value, &cpu->data_cache.lines[cache_line][offset], 1);
+    return true;
 }
 
 bool cpu_push(Cpu* cpu, uint64_t value) {
@@ -65,6 +296,11 @@ bool cpu_pop(Cpu* cpu, uint64_t* out) {
 
 void cpu_create(Cpu* cpu, address_bus* bus) {
     memset(cpu, 0, sizeof(Cpu));
+
+    memset(&cpu->data_cache.addresses, UNOCCUPIED_LINE,
+           sizeof(cpu->data_cache.addresses));
+    memset(&cpu->instruction_cache.addresses, UNOCCUPIED_LINE,
+           sizeof(cpu->instruction_cache.addresses));
 
     cpu->cache = instr_cache_create();
     cpu->bus = bus;
@@ -107,8 +343,9 @@ void cpu_run(Cpu* cpu) {
         uint64_t block_start = cpu->registers[IP_INDEX].r;
         // Don't do a cache lookup while we are still executing the same block
         // of code
-        while (cpu->registers[IP_INDEX].r == block_start) {
-            uint32_t i = 0;
+        while (cpu->registers[IP_INDEX].r == block_start && !cpu->halt &&
+               !cpu->exit) {
+            uint64_t i = 0;
             while (i < buf->len && !cpu->halt && !cpu->exit) {
                 cpu->clock_count++;
                 instruction* instr = &buf->instructions[i];

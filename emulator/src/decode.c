@@ -27,7 +27,7 @@ typedef enum {
 
 // On error returns `MEMORY_ERROR` otherwise returns `NO_ERROR`
 inline static error_t fetch(Cpu* cpu, uint8_t* byte) {
-    if (!cpu_read_1(cpu, cpu->registers[IP_INDEX].r, byte)) {
+    if(!cache_read_1(&cpu->instruction_cache, cpu->bus, cpu->registers[IP_INDEX].r, byte)) {
         return MEMORY_ERROR;
     }
     cpu->registers[IP_INDEX].r += 1;
@@ -35,7 +35,7 @@ inline static error_t fetch(Cpu* cpu, uint8_t* byte) {
 }
 
 inline static error_t fetch_2(Cpu* cpu, uint16_t* out) {
-    if (!cpu_read_2(cpu, cpu->registers[IP_INDEX].r, out)) {
+    if(!cache_read_2(&cpu->instruction_cache, cpu->bus, cpu->registers[IP_INDEX].r, out)) {
         return MEMORY_ERROR;
     }
     cpu->registers[IP_INDEX].r += 2;
@@ -43,7 +43,7 @@ inline static error_t fetch_2(Cpu* cpu, uint16_t* out) {
 }
 
 inline static error_t fetch_4(Cpu* cpu, uint32_t* out) {
-    if (!cpu_read_4(cpu, cpu->registers[IP_INDEX].r, out)) {
+    if(!cache_read_4(&cpu->instruction_cache, cpu->bus, cpu->registers[IP_INDEX].r, out)) {
         return MEMORY_ERROR;
     }
     cpu->registers[IP_INDEX].r += 4;
@@ -51,7 +51,7 @@ inline static error_t fetch_4(Cpu* cpu, uint32_t* out) {
 }
 
 inline static error_t fetch_8(Cpu* cpu, uint64_t* out) {
-    if (!cpu_read_8(cpu, cpu->registers[IP_INDEX].r, out)) {
+    if(!cache_read_8(&cpu->instruction_cache, cpu->bus, cpu->registers[IP_INDEX].r, out)) {
         return MEMORY_ERROR;
     }
     cpu->registers[IP_INDEX].r += 8;
@@ -264,6 +264,8 @@ inline static error_t decode_bis_address(Cpu* cpu, instruction* instr) {
 }
 
 inline static error_t decode_pc_rel(Cpu* cpu, instruction* instr) {
+    instr->base_id = INVALID_ID;
+    instr->index_id = INVALID_ID;
     // The PC relative displacement is constant so we can set both registers
     // to be invalid here
     int32_t off = 0;
@@ -480,9 +482,6 @@ error_t cpu_decode(Cpu* cpu, instruction* instr, bool* branch_point) {
     // STR and LEA instructions
     case 0x09:
     case 0x08:
-        instr->op_src = op_src_calculate_address;
-        return decode_mem_operand(cpu, instr);
-
         instr->op_src = op_src_calculate_address;
         return decode_mem_operand(cpu, instr);
 

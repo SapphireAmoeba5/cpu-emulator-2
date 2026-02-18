@@ -51,6 +51,11 @@ static void intpt(Cpu* cpu, int index) {
             printf("0\n");
         }
 
+        double elapsed = timer_elapsed_seconds(&cpu->timer);
+        double instructions_per_second = cpu->clock_count / elapsed;
+        double mips = instructions_per_second / 1e6;
+        printf("MIPS: %f\n", mips);
+
         cpu->exit = true;
     } else if (index == 0x81) {
         cpu->registers[0].r -= 1;

@@ -2,14 +2,15 @@
 #include <stdatomic.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 #include <time.h>
-
 #include "address_bus.h"
 #include "bus_device.h"
 #include "cpu.h"
 #include "devices/memory.h"
 #include "memory.h"
 #include "timer.h"
+
 
 /// Reads the file at PATH, and returns an allocated bufer and writes the length
 /// of the buffer to the pointer referenced by `length`
@@ -55,20 +56,14 @@ int main(void) {
     address_bus bus = {0};
     addr_bus_init(&bus);
 
-    memory* mem = memory_create();
-    addr_range range = {
-        .address = 0,
-        .range = (1 * 1024 * 1024) - 1,
-    };
 
     uint64_t length;
     uint8_t* program = readFile("output.bin", &length);
 
-    addr_bus_add_device(&bus, range, (bus_device*)mem);
+    memory* mem = memory_create(1024 * 1024 / BLOCK_SIZE);
+    memcpy(mem->data, program, length);
 
-    for (int i = 0; i < length; i++) {
-        memory_write_1((bus_device*)mem, i, program[i]);
-    }
+    addr_bus_add_device(&bus, (bus_device*)mem);
 
     Cpu cpu;
     cpu_create(&cpu, &bus);
@@ -83,27 +78,3 @@ int main(void) {
 
     addr_bus_destroy(&bus);
 }
-
-// int main(void) {
-//     Memory* memory = malloc(sizeof(Memory));
-//     memory_create(memory, 1024 * 1024 * 100 / 8);
-//
-//     uint64_t length;
-//     uint8_t* program = readFile("output.bin", &length);
-//
-//     for(int i = 0; i < length; i++) {
-//         memory_write_1(memory, program[i], i);
-//     }
-//
-//     printf("Done writing\n");
-//
-//     Cpu cpu;
-//     cpu_create(&cpu, memory);
-//     auto start = clock();
-//     cpu_run(&cpu);
-//     auto end = clock();
-//
-//     double duration = (double)(end - start) / CLOCKS_PER_SEC;
-//
-//     printf("Time taken: %f\n", duration);
-// }
