@@ -221,5 +221,7 @@ pub enum Mnemonic {
     Rdsp,
     Stsp,
 
+    Sysinfo,
+
     Int,
 }

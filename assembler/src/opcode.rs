@@ -914,6 +914,9 @@ static ENCODING_TABLE: LazyLock<[Vec<InstEncoding>; Mnemonic::COUNT]> = LazyLock
             InstEncoding::new(0xe0, true, encoding!(OPCODE_REG), [OperandFlags::GP_REG, OperandFlags::empty(), OperandFlags::empty()]),
         ]),
 
+        (Mnemonic::Sysinfo, vec![
+            InstEncoding::new(0x1c, true, EncodingFlags::empty(), [OperandFlags::empty(), OperandFlags::empty(), OperandFlags::empty()]),
+        ]),
 
 
         (Mnemonic::Int, vec![
