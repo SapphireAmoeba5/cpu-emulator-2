@@ -8,24 +8,16 @@ set(CMAKE_C_EXTENSIONS OFF)
 set(CMAKE_EXPORT_COMPILE_COMMANDS TRUE)
 
 if(APPLE)
-    set(
-        PLATFORM_SRC
-        src/platform/macos/timer.c
-    )
-set(
-        PLATFORM_INCLUDE
-        src/platform/macos/
-    )
+    set(PLATFORM_SRC 
+        thirdparty/tinycthread/tinycthread.c
+        src/platform/macos/timer.c)
+    set(PLATFORM_INCLUDE 
+        src/platform/macos/)
 elseif(LINUX)
-    set(
-        PLATFORM_SRC
-        src/platform/linux/timer.c
-    )
-set(
-        PLATFORM_INCLUDE
-        src/platform/linux/
-    )
-
+    set(PLATFORM_SRC 
+        src/platform/linux/timer.h)
+    set(PLATFORM_INCLUDE 
+        src/platform/linux/)
 endif()
 
 include(CheckIPOSupported)
@@ -37,8 +29,6 @@ else()
     message(STATUS "IPO not supported: ${IPO_OUTPUT}")
 endif()
 
-# set(CMAKE_CXX_FLAGS, "-Wall")
-
 add_executable(${PROJECT_NAME}
     src/main.c
     src/cpu.c
@@ -46,16 +36,16 @@ add_executable(${PROJECT_NAME}
     src/execute.c
     src/instruction_cache.c
     src/block.c
-    # src/memory.c
     src/address_bus.c
     src/bus_device.c
     src/devices/memory.c
-    xxhash/xxhash.c
+    thirdparty/xxhash/xxhash.c
     ${PLATFORM_SRC}
 )
 
 target_include_directories(${PROJECT_NAME} PUBLIC
     src/
-    xxhash/
+    thirdparty/
+    thirdparty/xxhash/
     ${PLATFORM_INCLUDE}
 )
