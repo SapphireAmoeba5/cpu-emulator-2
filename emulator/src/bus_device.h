@@ -22,6 +22,9 @@ typedef struct {
 
     bool(*device_read_block)(bus_device*, uint64_t block, void* out);
     bool(*device_write_block)(bus_device*, uint64_t block, void* in);
+
+    uint8_t*(*device_lock_block)(bus_device* device, uint64_t block);
+    void(*device_unlock_block)(bus_device* device, uint64_t block);
 } bus_device_vtable;
 
 #define BUS_DEVICE_IMPL \

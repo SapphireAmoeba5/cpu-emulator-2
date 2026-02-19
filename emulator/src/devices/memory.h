@@ -17,3 +17,6 @@ bool memory_destroy(bus_device* memory);
 
 bool memory_read_block(bus_device* bus, uint64_t addr, void* out);
 bool memory_write_block(bus_device* bus, uint64_t addr, void* in);
+
+uint8_t* memory_lock_block(bus_device* device, uint64_t block);
+void memory_unlock_block(bus_device* device, uint64_t block);

@@ -30,7 +30,6 @@ bucket_entry* add_new_entry_to_bucket(bucket* bucket, uint64_t key) {
 
 static inline uint64_t get_index(uint64_t key, uint64_t cap) {
     uint64_t index = key & (cap - 1);
-    
     return index;
 }
 

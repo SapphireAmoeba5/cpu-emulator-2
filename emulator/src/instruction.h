@@ -24,6 +24,7 @@ typedef enum : uint8_t {
     op_rdt,
     op_call,
     op_ret,
+    op_sysinfo,
     // Number of variants
     op_LENGTH,
 } iop;

@@ -87,7 +87,7 @@ iop ops[] =
 iop ext_ops[] =
 {
     /* 0x00 */ op_mov, op_mov, op_mov, op_mov, op_mov, op_mov, op_mov, op_mov, op_mov, op_mov, op_mov, op_mov, op_mov, op_mov, op_mov, op_mov,
-    /* 0x10 */ op_mov, op_mov, op_mov, op_mov, op_mov, op_mov, op_mov, op_mov, op_mov, op_mov, op_mov, op_mov, op_invl, op_invl, op_invl, op_invl,
+    /* 0x10 */ op_mov, op_mov, op_mov, op_mov, op_mov, op_mov, op_mov, op_mov, op_mov, op_mov, op_mov, op_mov, op_sysinfo, op_invl, op_invl, op_invl,
     /* 0x20 */ op_invl, op_invl, op_invl, op_invl, op_invl, op_invl, op_invl, op_invl, op_invl, op_invl, op_invl, op_invl, op_invl, op_invl, op_invl, op_invl,
     /* 0x30 */ op_invl, op_invl, op_invl, op_invl, op_invl, op_invl, op_invl, op_invl, op_invl, op_invl, op_invl, op_invl, op_invl, op_invl, op_invl, op_invl,
     /* 0x40 */ op_invl, op_invl, op_invl, op_invl, op_invl, op_invl, op_invl, op_invl, op_invl, op_invl, op_invl, op_invl, op_invl, op_invl, op_invl, op_invl,
@@ -374,6 +374,8 @@ error_t cpu_decode(Cpu* cpu, instruction* instr, bool* branch_point) {
     }
 
     switch (opcode) {
+    case EXT(0x1c):
+        return NO_ERROR; // These instructions are just opcodes
     case 0x00:
     case 0x13: // RET instruction
         // These instructions are usually have some special operation and don't

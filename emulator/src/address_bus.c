@@ -47,6 +47,26 @@ inline static bool dispatch_write_block(bus_device* device, uint64_t off,
     }
 }
 
+inline static uint8_t* dispatch_lock_block(bus_device* device, uint64_t block) {
+    switch (device->type) {
+    case device_memory:
+        return memory_lock_block(device, block);
+    case device_custom:
+        return device->vtable->device_lock_block(device, block);
+    }
+}
+
+inline static void dispatch_unlock_block(bus_device* device, uint64_t block) {
+    switch (device->type) {
+    case device_memory:
+        memory_unlock_block(device, block);
+        break;
+    case device_custom:
+        device->vtable->device_unlock_block(device, block);
+        break;
+    }
+}
+
 void addr_bus_init(address_bus* bus) { memset(bus, 0, sizeof(address_bus)); }
 void addr_bus_destroy(address_bus* bus) {
     for (int i = 0; i < bus->num_devices; i++) {
@@ -130,4 +150,25 @@ bool addr_bus_write_block(address_bus* bus, uint64_t addr, void* out) {
         }
     }
     return false;
+}
+
+uint8_t* addr_bus_lock_block(address_bus* bus, uint64_t addr,
+                             bus_device** out) {
+    uint64_t block = addr / BLOCK_SIZE;
+    for (int i = 0; i < bus->num_devices; i++) {
+        block_range range = bus->ranges[i];
+        bus_device* device = bus->devices[i];
+
+        if (address_intersects(range, block)) {
+            *out = device;
+            return dispatch_lock_block(device, block);
+        }
+    }
+    return NULL;
+}
+
+void addr_bus_unlock_block(address_bus* bus, uint64_t addr,
+                           bus_device* device) {
+    uint64_t block = addr / BLOCK_SIZE;
+    dispatch_unlock_block(device, block);
 }

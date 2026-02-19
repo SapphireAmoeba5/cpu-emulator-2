@@ -1,5 +1,6 @@
 #include "cpu.h"
 #include "address_bus.h"
+#include "bus_device.h"
 #include "data_cache.h"
 #include "decode.h"
 #include "execute.h"
@@ -13,303 +14,254 @@
 #include <string.h>
 #include <time.h>
 
-#define ALLOW_UNALIGNED_ACCESS
+#define USE_CACHE
 
 bool cpu_write_8(Cpu* cpu, uint64_t data, uint64_t address) {
-#ifdef ALLOW_UNALIGNED_ACCESS
+#ifdef USE_CACHE
     return cache_write_8(&cpu->data_cache, cpu->bus, address, data);
 #else
-    if (address % 8 != 0) {
+    uint64_t block_boundary = align_to_block_boundary(address);
+    uint64_t offset = address - block_boundary;
+
+    bus_device* device;
+    uint8_t* buf = addr_bus_lock_block(cpu->bus, address, &device);
+
+    if (buf == nullptr) {
         return false;
     }
 
-    uint64_t aligned = align_to_block_boundary(address);
-    int cache_line = get_cache_line(aligned);
+    if (address + 8 > block_boundary + BLOCK_SIZE) {
+        uint64_t next_boundary = align_to_block_boundary(address + 8);
+        int remaining = next_boundary - address;
+        memcpy(&buf[offset], &data, remaining);
+        addr_bus_unlock_block(cpu->bus, address, device);
 
-    // Keep the dirty flag set since we are about to write here anyways
-    if (cpu->data_cache.addresses[cache_line] != aligned) {
-        if (cpu->data_cache.dirty[cache_line]) {
-            if (!addr_bus_write_block(cpu->bus,
-                                      cpu->data_cache.addresses[cache_line],
-                                      &cpu->data_cache.lines[cache_line])) {
-                cpu->data_cache.dirty[cache_line] = false;
-                cpu->data_cache.addresses[cache_line] = UNOCCUPIED_LINE;
-                return false;
-            }
-        }
+        buf = addr_bus_lock_block(cpu->bus, next_boundary, &device);
 
-        if (!addr_bus_read_block(cpu->bus, aligned,
-                                 &cpu->data_cache.lines[cache_line])) {
-            cpu->data_cache.dirty[cache_line] = false;
-            cpu->data_cache.addresses[cache_line] = UNOCCUPIED_LINE;
+        if (buf == nullptr) {
             return false;
         }
-        cpu->data_cache.addresses[cache_line] = aligned;
-    }
 
-    uint64_t offset = address - aligned;
-    // No bounds checks, garunteed to fit
-    memcpy(&cpu->data_cache.lines[cache_line][offset], &data, 8);
+        memcpy(&buf[0], (char*)&data + remaining, 8 - remaining);
+        addr_bus_unlock_block(cpu->bus, next_boundary, device);
+    } else {
+        memcpy(&buf[offset], &data, 8);
+    }
     return true;
 #endif
 }
 bool cpu_write_4(Cpu* cpu, uint32_t data, uint64_t address) {
-#ifdef ALLOW_UNALIGNED_ACCESS
+#ifdef USE_CACHE
     return cache_write_4(&cpu->data_cache, cpu->bus, address, data);
 #else
-    if (address % 4 != 0) {
+    uint64_t block_boundary = align_to_block_boundary(address);
+    uint64_t offset = address - block_boundary;
+
+    bus_device* device;
+    uint8_t* buf = addr_bus_lock_block(cpu->bus, address, &device);
+
+    if (buf == nullptr) {
         return false;
     }
 
-    uint64_t aligned = align_to_block_boundary(address);
-    int cache_line = get_cache_line(aligned);
+    if (address + 4 > block_boundary + BLOCK_SIZE) {
+        uint64_t next_boundary = align_to_block_boundary(address + 4);
+        int remaining = next_boundary - address;
+        memcpy(&buf[offset], &data, remaining);
+        addr_bus_unlock_block(cpu->bus, address, device);
 
-    // Keep the dirty flag set since we are about to write here anyways
-    if (cpu->data_cache.addresses[cache_line] != aligned) {
-        if (cpu->data_cache.dirty[cache_line]) {
-            if (!addr_bus_write_block(cpu->bus,
-                                      cpu->data_cache.addresses[cache_line],
-                                      &cpu->data_cache.lines[cache_line])) {
-                cpu->data_cache.dirty[cache_line] = false;
-                cpu->data_cache.addresses[cache_line] = UNOCCUPIED_LINE;
-                return false;
-            }
-        }
+        buf = addr_bus_lock_block(cpu->bus, next_boundary, &device);
 
-        if (!addr_bus_read_block(cpu->bus, aligned,
-                                 &cpu->data_cache.lines[cache_line])) {
-            cpu->data_cache.dirty[cache_line] = false;
-            cpu->data_cache.addresses[cache_line] = UNOCCUPIED_LINE;
+        if (buf == nullptr) {
             return false;
         }
-        cpu->data_cache.addresses[cache_line] = aligned;
-    }
 
-    uint64_t offset = address - aligned;
-    // No bounds checks, garunteed to fit
-    memcpy(&cpu->data_cache.lines[cache_line][offset], &data, 4);
+        memcpy(&buf[0], (char*)&data + remaining, 4 - remaining);
+        addr_bus_unlock_block(cpu->bus, next_boundary, device);
+    } else {
+        memcpy(&buf[offset], &data, 4);
+    }
     return true;
 #endif
 }
 
 bool cpu_write_2(Cpu* cpu, uint16_t data, uint64_t address) {
-#ifdef ALLOW_UNALIGNED_ACCESS
+#ifdef USE_CACHE
     return cache_write_1(&cpu->data_cache, cpu->bus, address, data);
 #else
-    if (address % 2 != 0) {
+    uint64_t block_boundary = align_to_block_boundary(address);
+    uint64_t offset = address - block_boundary;
+
+    bus_device* device;
+    uint8_t* buf = addr_bus_lock_block(cpu->bus, address, &device);
+
+    if (buf == nullptr) {
         return false;
     }
 
-    uint64_t aligned = align_to_block_boundary(address);
-    int cache_line = get_cache_line(aligned);
+    if (address + 2 > block_boundary + BLOCK_SIZE) {
+        uint64_t next_boundary = align_to_block_boundary(address + 2);
+        memcpy(&buf[offset], &data, 1);
+        addr_bus_unlock_block(cpu->bus, address, device);
 
-    // Keep the dirty flag set since we are about to write here anyways
-    if (cpu->data_cache.addresses[cache_line] != aligned) {
-        if (cpu->data_cache.dirty[cache_line]) {
-            if (!addr_bus_write_block(cpu->bus,
-                                      cpu->data_cache.addresses[cache_line],
-                                      &cpu->data_cache.lines[cache_line])) {
-                cpu->data_cache.dirty[cache_line] = false;
-                cpu->data_cache.addresses[cache_line] = UNOCCUPIED_LINE;
-                return false;
-            }
-        }
+        buf = addr_bus_lock_block(cpu->bus, next_boundary, &device);
 
-        if (!addr_bus_read_block(cpu->bus, aligned,
-                                 &cpu->data_cache.lines[cache_line])) {
-            cpu->data_cache.dirty[cache_line] = false;
-            cpu->data_cache.addresses[cache_line] = UNOCCUPIED_LINE;
+        if (buf == nullptr) {
             return false;
         }
-        cpu->data_cache.addresses[cache_line] = aligned;
-    }
 
-    uint64_t offset = address - aligned;
-    // No bounds checks, garunteed to fit
-    memcpy(&cpu->data_cache.lines[cache_line][offset], &data, 2);
+        memcpy(&buf[0], (char*)&data + 1, 1);
+        addr_bus_unlock_block(cpu->bus, next_boundary, device);
+    } else {
+        memcpy(&buf[offset], &data, 2);
+    }
     return true;
 #endif
 }
 
 bool cpu_write_1(Cpu* cpu, uint8_t data, uint64_t address) {
-#ifdef ALLOW_UNALIGNED_ACCESS
+#ifdef USE_CACHE
     return cache_write_1(&cpu->data_cache, cpu->bus, address, data);
 #else
-    uint64_t aligned = align_to_block_boundary(address);
-    int cache_line = get_cache_line(aligned);
+    uint64_t block_boundary = align_to_block_boundary(address);
+    uint64_t offset = address - block_boundary;
 
-    // Keep the dirty flag set since we are about to write here anyways
-    if (cpu->data_cache.addresses[cache_line] != aligned) {
-        if (cpu->data_cache.dirty[cache_line]) {
-            if (!addr_bus_write_block(cpu->bus,
-                                      cpu->data_cache.addresses[cache_line],
-                                      &cpu->data_cache.lines[cache_line])) {
-                cpu->data_cache.dirty[cache_line] = false;
-                cpu->data_cache.addresses[cache_line] = UNOCCUPIED_LINE;
-                return false;
-            }
-        }
+    bus_device* device;
+    uint8_t* buf = addr_bus_lock_block(cpu->bus, address, &device);
 
-        if (!addr_bus_read_block(cpu->bus, aligned,
-                                 &cpu->data_cache.lines[cache_line])) {
-            cpu->data_cache.dirty[cache_line] = false;
-            cpu->data_cache.addresses[cache_line] = UNOCCUPIED_LINE;
-            return false;
-        }
-        cpu->data_cache.addresses[cache_line] = aligned;
+    if (buf == nullptr) {
+        return false;
     }
 
-    uint64_t offset = address - aligned;
-    // No bounds checks, garunteed to fit
-    memcpy(&cpu->data_cache.lines[cache_line][offset], &data, 1);
+    memcpy(&buf[offset], &data, 1);
+
     return true;
 #endif
 }
 
 bool cpu_read_8(Cpu* cpu, uint64_t address, uint64_t* value) {
-#ifdef ALLOW_UNALIGNED_ACCESS
+#ifdef USE_CACHE
     return cache_read_8(&cpu->data_cache, cpu->bus, address, value);
 #else
-    if (address % 8 != 0) {
+    uint64_t block_boundary = align_to_block_boundary(address);
+    uint64_t offset = address - block_boundary;
+    bus_device* device;
+    uint8_t* buf = addr_bus_lock_block(cpu->bus, address, &device);
+
+    if (buf == nullptr) {
         return false;
     }
 
-    uint64_t aligned = align_to_block_boundary(address);
-    int cache_line = get_cache_line(aligned);
+    if (address + 8 > block_boundary + BLOCK_SIZE) {
+        uint64_t next_boundary = align_to_block_boundary(address + 8);
+        int remaining = next_boundary - address;
+        memcpy(value, &buf[offset], remaining);
+        addr_bus_unlock_block(cpu->bus, address, device);
 
-    if (cpu->data_cache.addresses[cache_line] != aligned) {
-        bool dirty = cpu->data_cache.dirty[cache_line];
-        cpu->data_cache.dirty[cache_line] = false;
-        if (dirty) {
-            if (!addr_bus_write_block(cpu->bus,
-                                      cpu->data_cache.addresses[cache_line],
-                                      &cpu->data_cache.lines[cache_line])) {
-                cpu->data_cache.addresses[cache_line] = UNOCCUPIED_LINE;
-                return false;
-            }
-        }
+        buf = addr_bus_lock_block(cpu->bus, next_boundary, &device);
 
-        if (!addr_bus_read_block(cpu->bus, aligned,
-                                 &cpu->data_cache.lines[cache_line])) {
-            cpu->data_cache.addresses[cache_line] = UNOCCUPIED_LINE;
+        if (buf == nullptr) {
             return false;
         }
-        cpu->data_cache.addresses[cache_line] = aligned;
-    }
 
-    uint64_t offset = address - aligned;
-    // No bounds checks, garunteed to fit
-    memcpy(value, &cpu->data_cache.lines[cache_line][offset], 8);
+        memcpy((char*)value + remaining, &buf[0], 8 - remaining);
+        addr_bus_unlock_block(cpu->bus, next_boundary, device);
+    } else {
+
+        memcpy(value, &buf[offset], 8);
+        addr_bus_unlock_block(cpu->bus, address, device);
+    }
     return true;
 #endif
 }
 
 bool cpu_read_4(Cpu* cpu, uint64_t address, uint32_t* value) {
-#ifdef ALLOW_UNALIGNED_ACCESS
+#ifdef USE_CACHE
     return cache_read_4(&cpu->data_cache, cpu->bus, address, value);
 #else
-    if (address % 4 != 0) {
+    uint64_t block_boundary = align_to_block_boundary(address);
+    uint64_t offset = address - block_boundary;
+    bus_device* device;
+    uint8_t* buf = addr_bus_lock_block(cpu->bus, address, &device);
+
+    if (buf == nullptr) {
         return false;
     }
 
-    uint64_t aligned = align_to_block_boundary(address);
-    int cache_line = get_cache_line(aligned);
+    if (address + 4 > block_boundary + BLOCK_SIZE) {
+        uint64_t next_boundary = align_to_block_boundary(address + 4);
+        int remaining = next_boundary - address;
+        memcpy(value, &buf[offset], remaining);
+        addr_bus_unlock_block(cpu->bus, address, device);
 
-    if (cpu->data_cache.addresses[cache_line] != aligned) {
-        bool dirty = cpu->data_cache.dirty[cache_line];
-        cpu->data_cache.dirty[cache_line] = false;
-        if (dirty) {
-            if (!addr_bus_write_block(cpu->bus,
-                                      cpu->data_cache.addresses[cache_line],
-                                      &cpu->data_cache.lines[cache_line])) {
-                cpu->data_cache.addresses[cache_line] = UNOCCUPIED_LINE;
-                return false;
-            }
-        }
+        buf = addr_bus_lock_block(cpu->bus, next_boundary, &device);
 
-        if (!addr_bus_read_block(cpu->bus, aligned,
-                                 &cpu->data_cache.lines[cache_line])) {
-            cpu->data_cache.addresses[cache_line] = UNOCCUPIED_LINE;
+        if (buf == nullptr) {
             return false;
         }
-        cpu->data_cache.addresses[cache_line] = aligned;
-    }
 
-    uint64_t offset = address - aligned;
-    // No bounds checks, garunteed to fit
-    memcpy(value, &cpu->data_cache.lines[cache_line][offset], 4);
+        memcpy((char*)value + remaining, &buf[0], 4 - remaining);
+        addr_bus_unlock_block(cpu->bus, next_boundary, device);
+    } else {
+
+        memcpy(value, &buf[offset], 4);
+        addr_bus_unlock_block(cpu->bus, address, device);
+    }
     return true;
 #endif
 }
 
 bool cpu_read_2(Cpu* cpu, uint64_t address, uint16_t* value) {
-#ifdef ALLOW_UNALIGNED_ACCESS
+#ifdef USE_CACHE
     return cache_read_2(&cpu->data_cache, cpu->bus, address, value);
 #else
-    if (address % 2 != 0) {
+    uint64_t block_boundary = align_to_block_boundary(address);
+    uint64_t offset = address - block_boundary;
+    bus_device* device;
+    uint8_t* buf = addr_bus_lock_block(cpu->bus, address, &device);
+
+    if (buf == nullptr) {
         return false;
     }
 
-    uint64_t aligned = align_to_block_boundary(address);
-    int cache_line = get_cache_line(aligned);
+    if (address + 2 > block_boundary + BLOCK_SIZE) {
+        uint64_t next_boundary = align_to_block_boundary(address + 2);
+        memcpy(value, &buf[offset], 1);
+        addr_bus_unlock_block(cpu->bus, address, device);
 
-    if (cpu->data_cache.addresses[cache_line] != aligned) {
-        bool dirty = cpu->data_cache.dirty[cache_line];
-        cpu->data_cache.dirty[cache_line] = false;
-        if (dirty) {
-            if (!addr_bus_write_block(cpu->bus,
-                                      cpu->data_cache.addresses[cache_line],
-                                      &cpu->data_cache.lines[cache_line])) {
-                cpu->data_cache.addresses[cache_line] = UNOCCUPIED_LINE;
-                return false;
-            }
-        }
+        buf = addr_bus_lock_block(cpu->bus, next_boundary, &device);
 
-        if (!addr_bus_read_block(cpu->bus, aligned,
-                                 &cpu->data_cache.lines[cache_line])) {
-            cpu->data_cache.addresses[cache_line] = UNOCCUPIED_LINE;
+        if (buf == nullptr) {
             return false;
         }
-        cpu->data_cache.addresses[cache_line] = aligned;
-    }
 
-    uint64_t offset = address - aligned;
-    // No bounds checks, garunteed to fit
-    memcpy(value, &cpu->data_cache.lines[cache_line][offset], 2);
+        memcpy((char*)value + 1, &buf[0], 1);
+        addr_bus_unlock_block(cpu->bus, next_boundary, device);
+    } else {
+
+        memcpy(value, &buf[offset], 2);
+        addr_bus_unlock_block(cpu->bus, address, device);
+    }
     return true;
 #endif
 }
 
 bool cpu_read_1(Cpu* cpu, uint64_t address, uint8_t* value) {
-#ifdef ALLOW_UNALIGNED_ACCESS
+#ifdef USE_CACHE
     return cache_read_1(&cpu->data_cache, cpu->bus, address, value);
 #else
-    uint64_t aligned = align_to_block_boundary(address);
-    int cache_line = get_cache_line(aligned);
+    uint64_t block_boundary = align_to_block_boundary(address);
+    uint64_t offset = address - block_boundary;
+    bus_device* device;
+    uint8_t* buf = addr_bus_lock_block(cpu->bus, address, &device);
 
-    if (cpu->data_cache.addresses[cache_line] != aligned) {
-        bool dirty = cpu->data_cache.dirty[cache_line];
-        cpu->data_cache.dirty[cache_line] = false;
-        if (dirty) {
-            if (!addr_bus_write_block(cpu->bus,
-                                      cpu->data_cache.addresses[cache_line],
-                                      &cpu->data_cache.lines[cache_line])) {
-                cpu->data_cache.addresses[cache_line] = UNOCCUPIED_LINE;
-                return false;
-            }
-        }
-
-        if (!addr_bus_read_block(cpu->bus, aligned,
-                                 &cpu->data_cache.lines[cache_line])) {
-            cpu->data_cache.addresses[cache_line] = UNOCCUPIED_LINE;
-            return false;
-        }
-        cpu->data_cache.addresses[cache_line] = aligned;
+    if (buf == nullptr) {
+        return false;
     }
 
-    uint64_t offset = address - aligned;
-    // No bounds checks, garunteed to fit
-    memcpy(value, &cpu->data_cache.lines[cache_line][offset], 1);
+    memcpy(value, &buf[offset], 1);
+    addr_bus_unlock_block(cpu->bus, address, device);
+
     return true;
 #endif
 }
