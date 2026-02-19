@@ -11,7 +11,6 @@
 #include "memory.h"
 #include "timer.h"
 
-
 /// Reads the file at PATH, and returns an allocated bufer and writes the length
 /// of the buffer to the pointer referenced by `length`
 ///

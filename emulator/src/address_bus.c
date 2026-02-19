@@ -112,10 +112,7 @@ bool addr_bus_read_block(address_bus* bus, uint64_t addr, void* in) {
         block_range range = bus->ranges[i];
         bus_device* device = bus->devices[i];
 
-        if (address_intersects(range, addr)) {
-            if (addr + BLOCK_SIZE - 1 > range.base + range.range) {
-                return false;
-            }
+        if (address_intersects(range, block)) {
             return dispatch_read_block(device, block, in);
         }
     }
@@ -128,10 +125,7 @@ bool addr_bus_write_block(address_bus* bus, uint64_t addr, void* out) {
         block_range range = bus->ranges[i];
         bus_device* device = bus->devices[i];
 
-        if (address_intersects(range, addr)) {
-            if (addr + BLOCK_SIZE - 1 > range.base + range.range) {
-                return false;
-            }
+        if (address_intersects(range, block)) {
             return dispatch_write_block(device, block, out);
         }
     }

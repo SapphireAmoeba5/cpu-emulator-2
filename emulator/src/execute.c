@@ -57,12 +57,6 @@ static void intpt(Cpu* cpu, int index) {
         printf("MIPS: %f\n", mips);
 
         cpu->exit = true;
-    } else if (index == 0x81) {
-        cpu->registers[0].r -= 1;
-        cpu->flags &= ~FLAG_ZERO;
-        if (cpu->registers[0].r == 0) {
-            cpu->flags |= FLAG_ZERO;
-        }
     } else if (index == 0x82) {
         printf("DEBUG PRINT %llu\n", cpu->clock_count);
     }

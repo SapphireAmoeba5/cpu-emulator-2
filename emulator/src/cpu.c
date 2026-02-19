@@ -13,8 +13,12 @@
 #include <string.h>
 #include <time.h>
 
+#define ALLOW_UNALIGNED_ACCESS
+
 bool cpu_write_8(Cpu* cpu, uint64_t data, uint64_t address) {
-    printf("Address: %llu\n", address);
+#ifdef ALLOW_UNALIGNED_ACCESS
+    return cache_write_8(&cpu->data_cache, cpu->bus, address, data);
+#else
     if (address % 8 != 0) {
         return false;
     }
@@ -47,8 +51,12 @@ bool cpu_write_8(Cpu* cpu, uint64_t data, uint64_t address) {
     // No bounds checks, garunteed to fit
     memcpy(&cpu->data_cache.lines[cache_line][offset], &data, 8);
     return true;
+#endif
 }
 bool cpu_write_4(Cpu* cpu, uint32_t data, uint64_t address) {
+#ifdef ALLOW_UNALIGNED_ACCESS
+    return cache_write_4(&cpu->data_cache, cpu->bus, address, data);
+#else
     if (address % 4 != 0) {
         return false;
     }
@@ -81,9 +89,13 @@ bool cpu_write_4(Cpu* cpu, uint32_t data, uint64_t address) {
     // No bounds checks, garunteed to fit
     memcpy(&cpu->data_cache.lines[cache_line][offset], &data, 4);
     return true;
+#endif
 }
 
 bool cpu_write_2(Cpu* cpu, uint16_t data, uint64_t address) {
+#ifdef ALLOW_UNALIGNED_ACCESS
+    return cache_write_1(&cpu->data_cache, cpu->bus, address, data);
+#else
     if (address % 2 != 0) {
         return false;
     }
@@ -116,9 +128,13 @@ bool cpu_write_2(Cpu* cpu, uint16_t data, uint64_t address) {
     // No bounds checks, garunteed to fit
     memcpy(&cpu->data_cache.lines[cache_line][offset], &data, 2);
     return true;
+#endif
 }
 
 bool cpu_write_1(Cpu* cpu, uint8_t data, uint64_t address) {
+#ifdef ALLOW_UNALIGNED_ACCESS
+    return cache_write_1(&cpu->data_cache, cpu->bus, address, data);
+#else
     uint64_t aligned = align_to_block_boundary(address);
     int cache_line = get_cache_line(aligned);
 
@@ -147,9 +163,13 @@ bool cpu_write_1(Cpu* cpu, uint8_t data, uint64_t address) {
     // No bounds checks, garunteed to fit
     memcpy(&cpu->data_cache.lines[cache_line][offset], &data, 1);
     return true;
+#endif
 }
 
 bool cpu_read_8(Cpu* cpu, uint64_t address, uint64_t* value) {
+#ifdef ALLOW_UNALIGNED_ACCESS
+    return cache_read_8(&cpu->data_cache, cpu->bus, address, value);
+#else
     if (address % 8 != 0) {
         return false;
     }
@@ -181,9 +201,13 @@ bool cpu_read_8(Cpu* cpu, uint64_t address, uint64_t* value) {
     // No bounds checks, garunteed to fit
     memcpy(value, &cpu->data_cache.lines[cache_line][offset], 8);
     return true;
+#endif
 }
 
 bool cpu_read_4(Cpu* cpu, uint64_t address, uint32_t* value) {
+#ifdef ALLOW_UNALIGNED_ACCESS
+    return cache_read_4(&cpu->data_cache, cpu->bus, address, value);
+#else
     if (address % 4 != 0) {
         return false;
     }
@@ -215,9 +239,13 @@ bool cpu_read_4(Cpu* cpu, uint64_t address, uint32_t* value) {
     // No bounds checks, garunteed to fit
     memcpy(value, &cpu->data_cache.lines[cache_line][offset], 4);
     return true;
+#endif
 }
 
 bool cpu_read_2(Cpu* cpu, uint64_t address, uint16_t* value) {
+#ifdef ALLOW_UNALIGNED_ACCESS
+    return cache_read_2(&cpu->data_cache, cpu->bus, address, value);
+#else
     if (address % 2 != 0) {
         return false;
     }
@@ -249,9 +277,13 @@ bool cpu_read_2(Cpu* cpu, uint64_t address, uint16_t* value) {
     // No bounds checks, garunteed to fit
     memcpy(value, &cpu->data_cache.lines[cache_line][offset], 2);
     return true;
+#endif
 }
 
 bool cpu_read_1(Cpu* cpu, uint64_t address, uint8_t* value) {
+#ifdef ALLOW_UNALIGNED_ACCESS
+    return cache_read_1(&cpu->data_cache, cpu->bus, address, value);
+#else
     uint64_t aligned = align_to_block_boundary(address);
     int cache_line = get_cache_line(aligned);
 
@@ -279,6 +311,7 @@ bool cpu_read_1(Cpu* cpu, uint64_t address, uint8_t* value) {
     // No bounds checks, garunteed to fit
     memcpy(value, &cpu->data_cache.lines[cache_line][offset], 1);
     return true;
+#endif
 }
 
 bool cpu_push(Cpu* cpu, uint64_t value) {

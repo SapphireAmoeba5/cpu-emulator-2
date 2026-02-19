@@ -27,7 +27,8 @@ typedef enum {
 
 // On error returns `MEMORY_ERROR` otherwise returns `NO_ERROR`
 inline static error_t fetch(Cpu* cpu, uint8_t* byte) {
-    if(!cache_read_1(&cpu->instruction_cache, cpu->bus, cpu->registers[IP_INDEX].r, byte)) {
+    if (!cache_read_1(&cpu->instruction_cache, cpu->bus,
+                      cpu->registers[IP_INDEX].r, byte)) {
         return MEMORY_ERROR;
     }
     cpu->registers[IP_INDEX].r += 1;
@@ -35,7 +36,8 @@ inline static error_t fetch(Cpu* cpu, uint8_t* byte) {
 }
 
 inline static error_t fetch_2(Cpu* cpu, uint16_t* out) {
-    if(!cache_read_2(&cpu->instruction_cache, cpu->bus, cpu->registers[IP_INDEX].r, out)) {
+    if (!cache_read_2(&cpu->instruction_cache, cpu->bus,
+                      cpu->registers[IP_INDEX].r, out)) {
         return MEMORY_ERROR;
     }
     cpu->registers[IP_INDEX].r += 2;
@@ -43,7 +45,8 @@ inline static error_t fetch_2(Cpu* cpu, uint16_t* out) {
 }
 
 inline static error_t fetch_4(Cpu* cpu, uint32_t* out) {
-    if(!cache_read_4(&cpu->instruction_cache, cpu->bus, cpu->registers[IP_INDEX].r, out)) {
+    if (!cache_read_4(&cpu->instruction_cache, cpu->bus,
+                      cpu->registers[IP_INDEX].r, out)) {
         return MEMORY_ERROR;
     }
     cpu->registers[IP_INDEX].r += 4;
@@ -51,7 +54,8 @@ inline static error_t fetch_4(Cpu* cpu, uint32_t* out) {
 }
 
 inline static error_t fetch_8(Cpu* cpu, uint64_t* out) {
-    if(!cache_read_8(&cpu->instruction_cache, cpu->bus, cpu->registers[IP_INDEX].r, out)) {
+    if (!cache_read_8(&cpu->instruction_cache, cpu->bus,
+                      cpu->registers[IP_INDEX].r, out)) {
         return MEMORY_ERROR;
     }
     cpu->registers[IP_INDEX].r += 8;
@@ -275,6 +279,7 @@ inline static error_t decode_pc_rel(Cpu* cpu, instruction* instr) {
     // Encode this as a displacement because the address from this is
     // effectively a constant
     instr->displacement = (int64_t)cpu->registers[IP_INDEX].r + (int64_t)off;
+
     return NO_ERROR;
 }
 
