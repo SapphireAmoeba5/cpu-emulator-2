@@ -20,7 +20,7 @@
 /// Returns NULL if reading failed and `length` will contain an unspecified
 /// value
 void* readFile(const char* path, uint64_t* length) {
-    FILE* file = fopen(path, "r");
+    FILE* file = fopen(path, "rb");
 
     if (file == NULL) {
         return NULL;
