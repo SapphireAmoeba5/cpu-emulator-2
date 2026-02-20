@@ -5,14 +5,12 @@
 #include <stdio.h>
 
 // Must be a power of two
-constexpr uint64_t CACHE_LINES = 1;
+constexpr uint64_t CACHE_LINES = 2;
 
 constexpr uint64_t UNOCCUPIED_LINE = (uint64_t)-1;
 
 inline static uint64_t get_cache_line(uint64_t address) {
-    // uint64_t cache_line =
-    //     (address * 0x9e3779b97f4a7c15) & (CACHE_LINES - 1);
-    uint64_t cache_line = address & (CACHE_LINES - 1);
+    uint64_t cache_line = address / BLOCK_SIZE % CACHE_LINES;
     return cache_line;
 }
 
