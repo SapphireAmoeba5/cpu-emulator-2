@@ -387,12 +387,6 @@ error_t cpu_decode(Cpu* cpu, instruction* instr, bool* branch_point) {
         instr->op_src = op_src_immediate;
         return fetch(cpu, (uint8_t*)&instr->immediate);
 
-    // RDTF (Read timer frequency)
-    case 0x02:
-        instr->op_src = op_src_immediate;
-        instr->dest = &cpu->registers[0].r;
-        instr->immediate = CLOCK_HZ;
-        return NO_ERROR;
     // Branch instructions that take in a constant PC relative displacement
     case 0x10:
     case 0x11:

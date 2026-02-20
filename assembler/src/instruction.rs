@@ -216,7 +216,6 @@ pub enum Mnemonic {
     Ret,
 
     Rdt,
-    Rdtf,
 
     Rdsp,
     Stsp,
