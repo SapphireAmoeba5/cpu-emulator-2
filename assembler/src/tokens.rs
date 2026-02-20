@@ -566,8 +566,6 @@ impl<'a> TokenIter<'a> {
             "stsp" => Some(Mnemonic::Stsp),
             "rdsp" => Some(Mnemonic::Rdsp),
 
-            "rdtf" => Some(Mnemonic::Rdtf),
-            
             "sysinfo" => Some(Mnemonic::Sysinfo),
 
             "int" => Some(Mnemonic::Int),
