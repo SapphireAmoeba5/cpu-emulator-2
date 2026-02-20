@@ -934,7 +934,7 @@ static ENCODING_TABLE: LazyLock<[Vec<InstEncoding>; Mnemonic::COUNT]> = LazyLock
 
     let end = Instant::now();
     let elapsed = end - start;
-    debug!("Time taken to setup encodings: {}", elapsed.as_secs_f64());
+    debug!("Time taken to set up encodings: {}", elapsed.as_secs_f64());
 
     encodings_array
 });
