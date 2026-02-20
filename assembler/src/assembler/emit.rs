@@ -37,7 +37,10 @@ impl TryFrom<Register> for GPRegister {
     }
 }
 
+/// Used to extend the opcode space into another 256 different opcodes
 pub const EXTENSION_BYTE: u8 = 0x0f;
+/// To be used to extend existing instructions
+pub const PREFIX_BYTE: u8 = 0x80;
 
 #[derive(Debug, Copy, Clone, Eq, PartialEq)]
 #[repr(u8)]

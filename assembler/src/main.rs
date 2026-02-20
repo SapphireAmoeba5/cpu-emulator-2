@@ -18,9 +18,9 @@ use std::{
 };
 
 use crate::{
-    assembler::Assembler,
+    assembler::{emit::PREFIX_BYTE, Assembler},
     instruction::Mnemonic,
-    linker::{Instr, link},
+    linker::{link, Instr},
     module::Module,
     opcode::EncodingFlags,
     tokens::TokenIter,
@@ -125,7 +125,7 @@ fn output_opcode_map() {
 
             if opcodes.contains_key(&opcode) {
                 print!("{opcode:02x} ");
-            } else if opcode == u16::from(EXTENSION_BYTE) {
+            } else if opcode == u16::from(EXTENSION_BYTE) || opcode & 0xfff0 == u16::from(PREFIX_BYTE) {
                 print!("xx ");
             } else {
                 print!("-- ");

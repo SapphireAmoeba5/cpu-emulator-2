@@ -65,17 +65,17 @@ inline static error_t fetch_8(Cpu* cpu, uint64_t* out) {
 // clang-format off
 iop ops[] = 
 {
-    /* 0x00 */ op_halt, op_int, op_mov, op_invl, op_invl, op_mov, op_mov, op_mov, op_str, op_mov, op_invl, op_invl, op_invl, op_invl, op_invl, op_invl,
-    /* 0x10 */ op_mov, op_mov, op_call, op_ret, op_invl, op_add, op_add, op_add, op_invl, op_invl, op_invl, op_invl, op_invl, op_invl, op_invl, op_invl,
-    /* 0x20 */ op_mov, op_mov, op_invl, op_invl, op_invl, op_sub, op_sub, op_sub, op_invl, op_invl, op_invl, op_invl, op_invl, op_invl, op_invl, op_invl,
-    /* 0x30 */ op_mov, op_mov, op_invl, op_invl, op_invl, op_mul, op_mul, op_mul, op_invl, op_invl, op_invl, op_invl, op_invl, op_invl, op_invl, op_invl,
-    /* 0x40 */ op_mov, op_mov, op_invl, op_invl, op_invl, op_div, op_div, op_div, op_invl, op_invl, op_invl, op_invl, op_invl, op_invl, op_invl, op_invl,
-    /* 0x50 */ op_mov, op_mov, op_invl, op_invl, op_invl, op_idiv, op_idiv, op_idiv, op_invl, op_invl, op_invl, op_invl, op_invl, op_invl, op_invl, op_invl,
-    /* 0x60 */ op_mov, op_mov, op_invl, op_invl, op_invl, op_and, op_and, op_and, op_invl, op_invl, op_invl, op_invl, op_invl, op_invl, op_invl, op_invl,
-    /* 0x70 */ op_mov, op_mov, op_invl, op_invl, op_invl, op_or, op_or, op_or, op_invl, op_invl, op_invl, op_invl, op_invl, op_invl, op_invl, op_invl,
-    /* 0x80 */ op_mov, op_invl, op_invl, op_invl, op_invl, op_xor, op_xor, op_xor, op_invl, op_invl, op_invl, op_invl, op_invl, op_invl, op_invl, op_invl,
-    /* 0x90 */ op_invl, op_invl, op_invl, op_invl, op_invl, op_cmp, op_cmp, op_cmp, op_invl, op_invl, op_invl, op_invl, op_invl, op_invl, op_invl, op_invl,
-    /* 0xa0 */ op_invl, op_invl, op_invl, op_invl, op_invl, op_test, op_test, op_test, op_invl, op_invl, op_invl, op_invl, op_invl, op_invl, op_invl, op_invl,
+    /* 0x00 */ op_halt, op_int, op_ret, op_invl, op_invl, op_mov, op_mov, op_mov, op_str, op_mov, op_invl, op_invl, op_invl, op_invl, op_invl, op_invl,
+    /* 0x10 */ op_mov, op_mov, op_mov, op_mov, op_mov, op_mov, op_mov, op_mov, op_mov, op_mov, op_mov, op_mov, op_mov, op_mov, op_mov, op_call,
+    /* 0x20 */ op_mov, op_add, op_sub, op_mul, op_div, op_idiv, op_and, op_or, op_xor, op_cmp, op_test, op_invl, op_invl, op_invl, op_invl, op_invl,
+    /* 0x30 */ op_mov, op_add, op_sub, op_mul, op_div, op_idiv, op_and, op_or, op_xor, op_cmp, op_test, op_invl, op_invl, op_invl, op_invl, op_invl,
+    /* 0x40 */ op_mov, op_add, op_sub, op_mul, op_div, op_idiv, op_and, op_or, op_xor, op_cmp, op_test, op_invl, op_invl, op_invl, op_invl, op_invl,
+    /* 0x50 */ op_invl, op_invl, op_invl, op_invl, op_invl, op_invl, op_invl, op_invl, op_invl, op_invl, op_invl, op_invl, op_invl, op_invl, op_invl, op_invl,
+    /* 0x60 */ op_invl, op_invl, op_invl, op_invl, op_invl, op_invl, op_invl, op_invl, op_invl, op_invl, op_invl, op_invl, op_invl, op_invl, op_invl, op_invl,
+    /* 0x70 */ op_invl, op_invl, op_invl, op_invl, op_invl, op_invl, op_invl, op_invl, op_invl, op_invl, op_invl, op_invl, op_invl, op_invl, op_invl, op_invl,
+    /* 0x80 */ op_invl, op_invl, op_invl, op_invl, op_invl, op_invl, op_invl, op_invl, op_invl, op_invl, op_invl, op_invl, op_invl, op_invl, op_invl, op_invl,
+    /* 0x90 */ op_invl, op_invl, op_invl, op_invl, op_invl, op_invl, op_invl, op_invl, op_invl, op_invl, op_invl, op_invl, op_invl, op_invl, op_invl, op_invl,
+    /* 0xa0 */ op_invl, op_invl, op_invl, op_invl, op_invl, op_invl, op_invl, op_invl, op_invl, op_invl, op_invl, op_invl, op_invl, op_invl, op_invl, op_invl,
     /* 0xb0 */ op_call, op_call, op_call, op_call, op_call, op_call, op_call, op_call, op_call, op_call, op_call, op_call, op_call, op_call, op_call, op_call,
     /* 0xc0 */ op_mov, op_mov, op_mov, op_mov, op_mov, op_mov, op_mov, op_mov, op_mov, op_mov, op_mov, op_mov, op_mov, op_mov, op_mov, op_mov,
     /* 0xd0 */ op_push, op_push, op_push, op_push, op_push, op_push, op_push, op_push, op_push, op_push, op_push, op_push, op_push, op_push, op_push, op_push,
@@ -375,52 +375,52 @@ error_t cpu_decode(Cpu* cpu, instruction* instr, bool* branch_point) {
 
     switch (opcode) {
     case EXT(0x1c):
-        return NO_ERROR; // These instructions are just opcodes
-    case 0x00:
-    case 0x13: // RET instruction
-        // These instructions are usually have some special operation and don't
-        // need anything else to be modified
-        *branch_point = true;
-        return NO_ERROR;
+        return NO_ERROR; // These instructions are just opcodes, nothing else to decode
     // The interrupt instruction
     case 0x01:
         instr->op_src = op_src_immediate;
         return fetch(cpu, (uint8_t*)&instr->immediate);
+    case 0x00:
+    case 0x02: // RET instruction
+        // These instructions are usually have some special operation and don't
+        // need anything else to be modified
+        *branch_point = true;
+        return NO_ERROR;
 
     // Branch instructions that take in a constant PC relative displacement
     case 0x10:
     case 0x11:
     case 0x12:
-    case 0x20:
-    case 0x21:
-    case 0x30:
-    case 0x31:
-    case 0x40:
-    case 0x41:
-    case 0x50:
-    case 0x51:
-    case 0x60:
-    case 0x61:
-    case 0x70:
-    case 0x71:
-    case 0x80:
+    case 0x13:
+    case 0x14:
+    case 0x15:
+    case 0x16:
+    case 0x17:
+    case 0x18:
+    case 0x19:
+    case 0x1a:
+    case 0x1b:
+    case 0x1c:
+    case 0x1d:
+    case 0x1e:
+    case 0x1f: // 0x1F is the Call rel32 instruction
         *branch_point = true;
         // The address calculated from this is always constant
         instr->op_src = op_src_immediate;
         instr->dest = &cpu->registers[IP_INDEX].r;
         return decode_pc_rel(cpu, instr);
     // Data transfer instructions between registers
-    case 0x05:
-    case 0x15:
+    case 0x20:
+    case 0x21:
+    case 0x22:
+    case 0x23:
+    case 0x24:
     case 0x25:
-    case 0x35:
-    case 0x45:
-    case 0x55:
-    case 0x65:
-    case 0x75:
-    case 0x85:
-    case 0x95:
-    case 0xa5:
+    case 0x26:
+    case 0x27:
+    case 0x28:
+    case 0x29:
+    case 0x2a:
     case EXT(0x00):
     case EXT(0x01):
     case EXT(0x02):
@@ -438,31 +438,31 @@ error_t cpu_decode(Cpu* cpu, instruction* instr, bool* branch_point) {
         instr->op_src = op_src_dereference_reg;
         return decode_reg_operand(cpu, instr);
     // Data transfer instructions between a register and immediate
-    case 0x06:
-    case 0x16:
-    case 0x26:
+    case 0x30:
+    case 0x31:
+    case 0x32:
+    case 0x33:
+    case 0x34:
+    case 0x35:
     case 0x36:
-    case 0x46:
-    case 0x56:
-    case 0x66:
-    case 0x76:
-    case 0x86:
-    case 0x96:
-    case 0xa6:
+    case 0x37:
+    case 0x38:
+    case 0x39:
+    case 0x3a:
         instr->op_src = op_src_immediate;
         return decode_imm_operand(cpu, instr);
     // Data transfer instructions between a register and memory location
-    case 0x07:
-    case 0x17:
-    case 0x27:
-    case 0x37:
+    case 0x40:
+    case 0x41:
+    case 0x42:
+    case 0x43:
+    case 0x44:
+    case 0x45:
+    case 0x46:
     case 0x47:
-    case 0x57:
-    case 0x67:
-    case 0x77:
-    case 0x87:
-    case 0x97:
-    case 0xa7:
+    case 0x48:
+    case 0x49:
+    case 0x4a:
     case EXT(0x0e):
     case EXT(0x0f):
     case EXT(0x10):
