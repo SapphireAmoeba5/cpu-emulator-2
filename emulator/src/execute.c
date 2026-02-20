@@ -1,4 +1,5 @@
 #include "execute.h"
+#include "address_bus.h"
 #include "cpu.h"
 #include "decode.h"
 #include "instruction.h"
@@ -410,6 +411,7 @@ static error_t handle_sysinfo(Cpu* cpu, instruction* instr, uint64_t src) {
 
     if(*r0 == 1) {
         *r0 = CLOCK_HZ;
+        cpu->registers[1].r = BLOCK_SIZE;
     }
     
     return NO_ERROR;
