@@ -5,8 +5,9 @@
 
 #include "bus_device.h"
 
-/// Must at least be 64 bytes and divisble by 64
 constexpr uint64_t BLOCK_SIZE = 64;
+
+static_assert(BLOCK_SIZE >= 64);
 
 typedef struct {
     uint64_t base;
@@ -61,11 +62,11 @@ bool addr_bus_read_block(address_bus* bus, uint64_t addr, void* in);
 /// pointer to the block and the device that owns the block.
 ///
 /// Returns NULL if `addr` isn't in a device range
-uint8_t* addr_bus_lock_block(address_bus* bus, uint64_t addr, bus_device** out);
+uint8_t* addr_bus_lock_block(address_bus* bus, uint64_t addr, bus_device** device_out, block_range* range_out);
 
 /// Unlocks the block at `addr` and lets other threads access it
 ///
 /// This function must be preceded by addr_bus_lock_block, and you must pass in
 /// the same addrses in both functions and pass the same device that was
 /// returned from addr_bus_lock_block
-void addr_bus_unlock_block(address_bus* bus, uint64_t addr, bus_device* device);
+void addr_bus_unlock_block(address_bus* bus, uint64_t addr, bus_device* device, block_range range);

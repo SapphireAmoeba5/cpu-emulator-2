@@ -176,7 +176,6 @@ bool cache_read_8(cache* cache, address_bus* bus, uint64_t address,
     } else {
         memcpy(ptr, &cache->lines[cache_line][offset], 8);
     }
-
     return true;
 }
 

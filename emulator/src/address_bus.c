@@ -1,5 +1,7 @@
 #include "address_bus.h"
+#include "block.h"
 #include "bus_device.h"
+#include "data_cache.h"
 #include "devices/memory.h"
 #include <assert.h>
 #include <stdint.h>
@@ -28,13 +30,13 @@ inline static bool dispatch_destroy(bus_device* device) {
         return device->vtable->device_destroy(device);
     }
 }
-inline static bool dispatch_read_block(bus_device* device, uint64_t off,
+inline static bool dispatch_read_block(bus_device* device, uint64_t block,
                                        void* out) {
     switch (device->type) {
     case device_memory:
-        return memory_read_block(device, off, out);
+        return memory_read_block(device, block, out);
     case device_custom:
-        return device->vtable->device_read_block(device, off, out);
+        return device->vtable->device_read_block(device, block, out);
     }
 }
 inline static bool dispatch_write_block(bus_device* device, uint64_t off,
@@ -133,7 +135,8 @@ bool addr_bus_read_block(address_bus* bus, uint64_t addr, void* in) {
         bus_device* device = bus->devices[i];
 
         if (address_intersects(range, block)) {
-            return dispatch_read_block(device, block, in);
+            uint64_t block_offset = block - range.base;
+            return dispatch_read_block(device, block_offset, in);
         }
     }
     return false;
@@ -146,29 +149,33 @@ bool addr_bus_write_block(address_bus* bus, uint64_t addr, void* out) {
         bus_device* device = bus->devices[i];
 
         if (address_intersects(range, block)) {
-            return dispatch_write_block(device, block, out);
+            uint64_t block_offset = block - range.base;
+            return dispatch_write_block(device, block_offset, out);
         }
     }
     return false;
 }
 
 uint8_t* addr_bus_lock_block(address_bus* bus, uint64_t addr,
-                             bus_device** out) {
+                             bus_device** device_out, block_range* range_out) {
     uint64_t block = addr / BLOCK_SIZE;
     for (int i = 0; i < bus->num_devices; i++) {
         block_range range = bus->ranges[i];
         bus_device* device = bus->devices[i];
 
         if (address_intersects(range, block)) {
-            *out = device;
-            return dispatch_lock_block(device, block);
+            *device_out = device;
+            *range_out = range;
+            uint64_t block_offset = block - range.base;
+            return dispatch_lock_block(device, block_offset);
         }
     }
     return NULL;
 }
 
-void addr_bus_unlock_block(address_bus* bus, uint64_t addr,
-                           bus_device* device) {
+void addr_bus_unlock_block(address_bus* bus, uint64_t addr, bus_device* device,
+                           block_range range) {
     uint64_t block = addr / BLOCK_SIZE;
-    dispatch_unlock_block(device, block);
+    uint64_t block_offset = block - range.base;
+    dispatch_unlock_block(device, block_offset);
 }

@@ -21,7 +21,7 @@ static void intpt(Cpu* cpu, int index) {
         printf("ip: %llu\nsp: %llu\n", cpu->registers[IP_INDEX].r,
                cpu->registers[SP_INDEX].r);
 
-        printf("ZR | CR | OF | SN\n");
+        printf("ZF | CF | OF | SF\n");
 
         if (cpu->flags & FLAG_ZERO) {
             printf("1  | ");

@@ -22,7 +22,8 @@ bool cpu_write_8(Cpu* cpu, uint64_t data, uint64_t address) {
     uint64_t offset = address - block_boundary;
 
     bus_device* device;
-    uint8_t* buf = addr_bus_lock_block(cpu->bus, address, &device);
+    block_range range;
+    uint8_t* buf = addr_bus_lock_block(cpu->bus, address, &device, &range);
 
     if (buf == nullptr) {
         return false;
@@ -32,18 +33,19 @@ bool cpu_write_8(Cpu* cpu, uint64_t data, uint64_t address) {
         uint64_t next_boundary = align_to_block_boundary(address + 8);
         int remaining = next_boundary - address;
         memcpy(&buf[offset], &data, remaining);
-        addr_bus_unlock_block(cpu->bus, address, device);
+        addr_bus_unlock_block(cpu->bus, address, device, range);
 
-        buf = addr_bus_lock_block(cpu->bus, next_boundary, &device);
+        buf = addr_bus_lock_block(cpu->bus, next_boundary, &device, &range);
 
         if (buf == nullptr) {
             return false;
         }
 
         memcpy(&buf[0], (char*)&data + remaining, 8 - remaining);
-        addr_bus_unlock_block(cpu->bus, next_boundary, device);
+        addr_bus_unlock_block(cpu->bus, next_boundary, device, range);
     } else {
         memcpy(&buf[offset], &data, 8);
+        addr_bus_unlock_block(cpu->bus, address, device, range);
     }
     return true;
 #endif
@@ -56,7 +58,8 @@ bool cpu_write_4(Cpu* cpu, uint32_t data, uint64_t address) {
     uint64_t offset = address - block_boundary;
 
     bus_device* device;
-    uint8_t* buf = addr_bus_lock_block(cpu->bus, address, &device);
+    block_range range;
+    uint8_t* buf = addr_bus_lock_block(cpu->bus, address, &device, &range);
 
     if (buf == nullptr) {
         return false;
@@ -66,18 +69,19 @@ bool cpu_write_4(Cpu* cpu, uint32_t data, uint64_t address) {
         uint64_t next_boundary = align_to_block_boundary(address + 4);
         int remaining = next_boundary - address;
         memcpy(&buf[offset], &data, remaining);
-        addr_bus_unlock_block(cpu->bus, address, device);
+        addr_bus_unlock_block(cpu->bus, address, device, range);
 
-        buf = addr_bus_lock_block(cpu->bus, next_boundary, &device);
+        buf = addr_bus_lock_block(cpu->bus, next_boundary, &device, &range);
 
         if (buf == nullptr) {
             return false;
         }
 
         memcpy(&buf[0], (char*)&data + remaining, 4 - remaining);
-        addr_bus_unlock_block(cpu->bus, next_boundary, device);
+        addr_bus_unlock_block(cpu->bus, next_boundary, device, range);
     } else {
         memcpy(&buf[offset], &data, 4);
+        addr_bus_unlock_block(cpu->bus, address, device, range);
     }
     return true;
 #endif
@@ -91,7 +95,8 @@ bool cpu_write_2(Cpu* cpu, uint16_t data, uint64_t address) {
     uint64_t offset = address - block_boundary;
 
     bus_device* device;
-    uint8_t* buf = addr_bus_lock_block(cpu->bus, address, &device);
+    block_range range;
+    uint8_t* buf = addr_bus_lock_block(cpu->bus, address, &device, &range);
 
     if (buf == nullptr) {
         return false;
@@ -100,18 +105,19 @@ bool cpu_write_2(Cpu* cpu, uint16_t data, uint64_t address) {
     if (address + 2 > block_boundary + BLOCK_SIZE) {
         uint64_t next_boundary = align_to_block_boundary(address + 2);
         memcpy(&buf[offset], &data, 1);
-        addr_bus_unlock_block(cpu->bus, address, device);
+        addr_bus_unlock_block(cpu->bus, address, device, range);
 
-        buf = addr_bus_lock_block(cpu->bus, next_boundary, &device);
+        buf = addr_bus_lock_block(cpu->bus, next_boundary, &device, &range);
 
         if (buf == nullptr) {
             return false;
         }
 
         memcpy(&buf[0], (char*)&data + 1, 1);
-        addr_bus_unlock_block(cpu->bus, next_boundary, device);
+        addr_bus_unlock_block(cpu->bus, next_boundary, device, range);
     } else {
         memcpy(&buf[offset], &data, 2);
+        addr_bus_unlock_block(cpu->bus, address, device, range);
     }
     return true;
 #endif
@@ -125,13 +131,16 @@ bool cpu_write_1(Cpu* cpu, uint8_t data, uint64_t address) {
     uint64_t offset = address - block_boundary;
 
     bus_device* device;
-    uint8_t* buf = addr_bus_lock_block(cpu->bus, address, &device);
+    block_range range;
+    uint8_t* buf = addr_bus_lock_block(cpu->bus, address, &device, &range);
 
     if (buf == nullptr) {
         return false;
     }
 
     memcpy(&buf[offset], &data, 1);
+
+    addr_bus_unlock_block(cpu->bus, address, device, range);
 
     return true;
 #endif
@@ -144,7 +153,8 @@ bool cpu_read_8(Cpu* cpu, uint64_t address, uint64_t* value) {
     uint64_t block_boundary = align_to_block_boundary(address);
     uint64_t offset = address - block_boundary;
     bus_device* device;
-    uint8_t* buf = addr_bus_lock_block(cpu->bus, address, &device);
+    block_range range;
+    uint8_t* buf = addr_bus_lock_block(cpu->bus, address, &device, &range);
 
     if (buf == nullptr) {
         return false;
@@ -154,20 +164,20 @@ bool cpu_read_8(Cpu* cpu, uint64_t address, uint64_t* value) {
         uint64_t next_boundary = align_to_block_boundary(address + 8);
         int remaining = next_boundary - address;
         memcpy(value, &buf[offset], remaining);
-        addr_bus_unlock_block(cpu->bus, address, device);
+        addr_bus_unlock_block(cpu->bus, address, device, range);
 
-        buf = addr_bus_lock_block(cpu->bus, next_boundary, &device);
+        buf = addr_bus_lock_block(cpu->bus, next_boundary, &device, &range);
 
         if (buf == nullptr) {
             return false;
         }
 
         memcpy((char*)value + remaining, &buf[0], 8 - remaining);
-        addr_bus_unlock_block(cpu->bus, next_boundary, device);
+        addr_bus_unlock_block(cpu->bus, next_boundary, device, range);
     } else {
 
         memcpy(value, &buf[offset], 8);
-        addr_bus_unlock_block(cpu->bus, address, device);
+        addr_bus_unlock_block(cpu->bus, address, device, range);
     }
     return true;
 #endif
@@ -180,7 +190,8 @@ bool cpu_read_4(Cpu* cpu, uint64_t address, uint32_t* value) {
     uint64_t block_boundary = align_to_block_boundary(address);
     uint64_t offset = address - block_boundary;
     bus_device* device;
-    uint8_t* buf = addr_bus_lock_block(cpu->bus, address, &device);
+    block_range range;
+    uint8_t* buf = addr_bus_lock_block(cpu->bus, address, &device, &range);
 
     if (buf == nullptr) {
         return false;
@@ -190,20 +201,20 @@ bool cpu_read_4(Cpu* cpu, uint64_t address, uint32_t* value) {
         uint64_t next_boundary = align_to_block_boundary(address + 4);
         int remaining = next_boundary - address;
         memcpy(value, &buf[offset], remaining);
-        addr_bus_unlock_block(cpu->bus, address, device);
+        addr_bus_unlock_block(cpu->bus, address, device, range);
 
-        buf = addr_bus_lock_block(cpu->bus, next_boundary, &device);
+        buf = addr_bus_lock_block(cpu->bus, next_boundary, &device, &range);
 
         if (buf == nullptr) {
             return false;
         }
 
         memcpy((char*)value + remaining, &buf[0], 4 - remaining);
-        addr_bus_unlock_block(cpu->bus, next_boundary, device);
+        addr_bus_unlock_block(cpu->bus, next_boundary, device, range);
     } else {
 
         memcpy(value, &buf[offset], 4);
-        addr_bus_unlock_block(cpu->bus, address, device);
+        addr_bus_unlock_block(cpu->bus, address, device, range);
     }
     return true;
 #endif
@@ -216,7 +227,8 @@ bool cpu_read_2(Cpu* cpu, uint64_t address, uint16_t* value) {
     uint64_t block_boundary = align_to_block_boundary(address);
     uint64_t offset = address - block_boundary;
     bus_device* device;
-    uint8_t* buf = addr_bus_lock_block(cpu->bus, address, &device);
+    block_range range;
+    uint8_t* buf = addr_bus_lock_block(cpu->bus, address, &device, &range);
 
     if (buf == nullptr) {
         return false;
@@ -225,20 +237,20 @@ bool cpu_read_2(Cpu* cpu, uint64_t address, uint16_t* value) {
     if (address + 2 > block_boundary + BLOCK_SIZE) {
         uint64_t next_boundary = align_to_block_boundary(address + 2);
         memcpy(value, &buf[offset], 1);
-        addr_bus_unlock_block(cpu->bus, address, device);
+        addr_bus_unlock_block(cpu->bus, address, device, range);
 
-        buf = addr_bus_lock_block(cpu->bus, next_boundary, &device);
+        buf = addr_bus_lock_block(cpu->bus, next_boundary, &device, &range);
 
         if (buf == nullptr) {
             return false;
         }
 
         memcpy((char*)value + 1, &buf[0], 1);
-        addr_bus_unlock_block(cpu->bus, next_boundary, device);
+        addr_bus_unlock_block(cpu->bus, next_boundary, device, range);
     } else {
 
         memcpy(value, &buf[offset], 2);
-        addr_bus_unlock_block(cpu->bus, address, device);
+        addr_bus_unlock_block(cpu->bus, address, device, range);
     }
     return true;
 #endif
@@ -251,14 +263,15 @@ bool cpu_read_1(Cpu* cpu, uint64_t address, uint8_t* value) {
     uint64_t block_boundary = align_to_block_boundary(address);
     uint64_t offset = address - block_boundary;
     bus_device* device;
-    uint8_t* buf = addr_bus_lock_block(cpu->bus, address, &device);
+    block_range range;
+    uint8_t* buf = addr_bus_lock_block(cpu->bus, address, &device, &range);
 
     if (buf == nullptr) {
         return false;
     }
 
     memcpy(value, &buf[offset], 1);
-    addr_bus_unlock_block(cpu->bus, address, device);
+    addr_bus_unlock_block(cpu->bus, address, device, range);
 
     return true;
 #endif
