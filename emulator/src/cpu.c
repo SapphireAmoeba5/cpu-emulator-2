@@ -14,8 +14,6 @@
 #include <string.h>
 #include <time.h>
 
-#define USE_CACHE
-
 bool cpu_write_8(Cpu* cpu, uint64_t data, uint64_t address) {
 #ifdef USE_CACHE
     return cache_write_8(&cpu->data_cache, cpu->bus, address, data);

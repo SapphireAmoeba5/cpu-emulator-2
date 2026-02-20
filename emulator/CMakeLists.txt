@@ -3,23 +3,13 @@ project(emulator)
 
 set(CMAKE_C_STANDARD 23)
 set(CMAKE_C_STANDARD_REQUIRED ON)
-set(CMAKE_C_EXTENSIONS OFF)
 
 set(CMAKE_EXPORT_COMPILE_COMMANDS TRUE)
 
-if(APPLE)
-    set(PLATFORM_SRC 
-        thirdparty/tinycthread/tinycthread.c
-        src/platform/macos/timer.c)
-    set(PLATFORM_INCLUDE 
-        src/platform/macos/)
-elseif(LINUX)
-    set(PLATFORM_SRC 
-        src/platform/linux/timer.h)
-    set(PLATFORM_INCLUDE 
-        src/platform/linux/)
-endif()
+option(USE_CACHE "Use the cache implementation when accessing memory" ON)
 
+
+# Link time optimization
 include(CheckIPOSupported)
 check_ipo_supported(RESULT IPO_SUPPORTED OUTPUT IPO_OUTPUT)
 if(IPO_SUPPORTED)
@@ -41,12 +31,33 @@ add_executable(${PROJECT_NAME}
     src/devices/memory.c
     src/data_cache.c
     thirdparty/xxhash/xxhash.c
-    ${PLATFORM_SRC}
 )
 
 target_include_directories(${PROJECT_NAME} PUBLIC
     src/
     thirdparty/
     thirdparty/xxhash/
-    ${PLATFORM_INCLUDE}
 )
+
+if(USE_CACHE)
+    target_compile_definitions(${PROJECT_NAME} PRIVATE USE_CACHE=1)
+endif()
+
+# Toggle platform specific files
+if(APPLE)
+    target_sources(${PROJECT_NAME} PRIVATE
+        thirdparty/tinycthread/tinycthread.c
+        src/platform/macos/timer.c
+    )
+
+    target_include_directories(${PROJECT_NAME} PRIVATE
+        src/platform/macos
+    )
+elseif(LINUX)
+    target_sources(${PROJECT_NAME} PRIVATE
+        src/platform/linux/timer.h
+    )
+    target_include_directories(${PROJECT_NAME} PRIVATE
+        src/platform/linux
+    )
+endif()
