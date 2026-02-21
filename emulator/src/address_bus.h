@@ -5,6 +5,8 @@
 
 #include "bus_device.h"
 
+struct Cpu;
+
 constexpr uint64_t BLOCK_SIZE = 64;
 
 static_assert(BLOCK_SIZE >= 64);
@@ -57,6 +59,11 @@ bool addr_bus_intersects(address_bus* bus, block_range range);
 
 bool addr_bus_write_block(address_bus* bus, uint64_t addr, void* out);
 bool addr_bus_read_block(address_bus* bus, uint64_t addr, void* in);
+
+/// Long jumps to the Cpu's exception handler on bus error
+void addr_bus_write_block_except(address_bus* bus, struct Cpu* cpu, uint64_t addr, void* out);
+/// Long jumps to the Cpu's exception handler on bus error
+void addr_bus_read_block_except(address_bus* bus, struct Cpu* cpu, uint64_t addr, void* out);
 
 /// Locks the block at `addr` so no other threads can use it. Returns the
 /// pointer to the block and the device that owns the block.

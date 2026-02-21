@@ -6,6 +6,7 @@
 #include "execute.h"
 #include "instruction_cache.h"
 #include "memory.h"
+#include <setjmp.h>
 #include <stdatomic.h>
 #include <stdbool.h>
 #include <stdckdint.h>
@@ -15,280 +16,98 @@
 #include <string.h>
 #include <time.h>
 
-bool cpu_write_8(Cpu* cpu, uint64_t data, uint64_t address) {
-#ifdef USE_CACHE
-    return cache_write_8(&cpu->data_cache, cpu->bus, address, data);
-#else
-    uint64_t block_boundary = align_to_block_boundary(address);
-    uint64_t offset = address - block_boundary;
-
-    bus_device* device;
-    block_range range;
-    uint8_t* buf = addr_bus_lock_block(cpu->bus, address, &device, &range);
-
-    if (buf == nullptr) {
-        return false;
-    }
-
-    if (address + 8 > block_boundary + BLOCK_SIZE) {
-        uint64_t next_boundary = align_to_block_boundary(address + 8);
-        int remaining = next_boundary - address;
-        memcpy(&buf[offset], &data, remaining);
-        addr_bus_unlock_block(cpu->bus, address, device, range);
-
-        buf = addr_bus_lock_block(cpu->bus, next_boundary, &device, &range);
-
-        if (buf == nullptr) {
-            return false;
+static void intpt(Cpu* cpu, int index) {
+    if (index == 0x80) {
+        printf("Cycle: %llu\n", cpu->clock_count);
+        for (int i = 0; i < 16; i++) {
+            uint64_t value = cpu->registers[i].r;
+            printf("r%llu = %016llx (%lld)\n", (uint64_t)i, value,
+                   (int64_t)value);
         }
 
-        memcpy(&buf[0], (char*)&data + remaining, 8 - remaining);
-        addr_bus_unlock_block(cpu->bus, next_boundary, device, range);
-    } else {
-        memcpy(&buf[offset], &data, 8);
-        addr_bus_unlock_block(cpu->bus, address, device, range);
-    }
-    return true;
-#endif
-}
-bool cpu_write_4(Cpu* cpu, uint32_t data, uint64_t address) {
-#ifdef USE_CACHE
-    return cache_write_4(&cpu->data_cache, cpu->bus, address, data);
-#else
-    uint64_t block_boundary = align_to_block_boundary(address);
-    uint64_t offset = address - block_boundary;
+        printf("ip: %llu\nsp: %llu\n", cpu->registers[IP_INDEX].r,
+               cpu->registers[SP_INDEX].r);
 
-    bus_device* device;
-    block_range range;
-    uint8_t* buf = addr_bus_lock_block(cpu->bus, address, &device, &range);
+        printf("ZF | CF | OF | SF\n");
 
-    if (buf == nullptr) {
-        return false;
-    }
+        if (cpu->flags & FLAG_ZERO) {
+            printf("1  | ");
 
-    if (address + 4 > block_boundary + BLOCK_SIZE) {
-        uint64_t next_boundary = align_to_block_boundary(address + 4);
-        int remaining = next_boundary - address;
-        memcpy(&buf[offset], &data, remaining);
-        addr_bus_unlock_block(cpu->bus, address, device, range);
+        } else {
+            printf("0  | ");
+        }
+        if (cpu->flags & FLAG_CARRY) {
 
-        buf = addr_bus_lock_block(cpu->bus, next_boundary, &device, &range);
+            printf("1  | ");
+        } else {
 
-        if (buf == nullptr) {
-            return false;
+            printf("0  | ");
+        }
+        if (cpu->flags & FLAG_OVERFLOW) {
+
+            printf("1  | ");
+        } else {
+
+            printf("0  | ");
+        }
+        if (cpu->flags & FLAG_SIGN) {
+
+            printf("1\n");
+        } else {
+
+            printf("0\n");
         }
 
-        memcpy(&buf[0], (char*)&data + remaining, 4 - remaining);
-        addr_bus_unlock_block(cpu->bus, next_boundary, device, range);
-    } else {
-        memcpy(&buf[offset], &data, 4);
-        addr_bus_unlock_block(cpu->bus, address, device, range);
+        double elapsed = timer_elapsed_seconds(&cpu->timer);
+        double instructions_per_second = cpu->clock_count / elapsed;
+        double mips = instructions_per_second / 1e6;
+        printf("MIPS: %f\n", mips);
+
+        cpu->exit = true;
+    } else if (index == 0x82) {
+        printf("DEBUG PRINT %llu\n", cpu->clock_count);
     }
-    return true;
-#endif
 }
 
-bool cpu_write_2(Cpu* cpu, uint16_t data, uint64_t address) {
-#ifdef USE_CACHE
-    return cache_write_1(&cpu->data_cache, cpu->bus, address, data);
-#else
-    uint64_t block_boundary = align_to_block_boundary(address);
-    uint64_t offset = address - block_boundary;
-
-    bus_device* device;
-    block_range range;
-    uint8_t* buf = addr_bus_lock_block(cpu->bus, address, &device, &range);
-
-    if (buf == nullptr) {
-        return false;
-    }
-
-    if (address + 2 > block_boundary + BLOCK_SIZE) {
-        uint64_t next_boundary = align_to_block_boundary(address + 2);
-        memcpy(&buf[offset], &data, 1);
-        addr_bus_unlock_block(cpu->bus, address, device, range);
-
-        buf = addr_bus_lock_block(cpu->bus, next_boundary, &device, &range);
-
-        if (buf == nullptr) {
-            return false;
-        }
-
-        memcpy(&buf[0], (char*)&data + 1, 1);
-        addr_bus_unlock_block(cpu->bus, next_boundary, device, range);
-    } else {
-        memcpy(&buf[offset], &data, 2);
-        addr_bus_unlock_block(cpu->bus, address, device, range);
-    }
-    return true;
-#endif
+void cpu_write_8(Cpu* cpu, uint64_t data, uint64_t address) {
+    cache_write_8_except(&cpu->data_cache, cpu->bus, cpu, address, data);
+}
+void cpu_write_4(Cpu* cpu, uint32_t data, uint64_t address) {
+    cache_write_4_except(&cpu->data_cache, cpu->bus, cpu, address, data);
 }
 
-bool cpu_write_1(Cpu* cpu, uint8_t data, uint64_t address) {
-#ifdef USE_CACHE
-    return cache_write_1(&cpu->data_cache, cpu->bus, address, data);
-#else
-    uint64_t block_boundary = align_to_block_boundary(address);
-    uint64_t offset = address - block_boundary;
-
-    bus_device* device;
-    block_range range;
-    uint8_t* buf = addr_bus_lock_block(cpu->bus, address, &device, &range);
-
-    if (buf == nullptr) {
-        return false;
-    }
-
-    memcpy(&buf[offset], &data, 1);
-
-    addr_bus_unlock_block(cpu->bus, address, device, range);
-
-    return true;
-#endif
+void cpu_write_2(Cpu* cpu, uint16_t data, uint64_t address) {
+    cache_write_1_except(&cpu->data_cache, cpu->bus, cpu, address, data);
 }
 
-bool cpu_read_8(Cpu* cpu, uint64_t address, uint64_t* value) {
-#ifdef USE_CACHE
-    return cache_read_8(&cpu->data_cache, cpu->bus, address, value);
-#else
-    uint64_t block_boundary = align_to_block_boundary(address);
-    uint64_t offset = address - block_boundary;
-    bus_device* device;
-    block_range range;
-    uint8_t* buf = addr_bus_lock_block(cpu->bus, address, &device, &range);
-
-    if (buf == nullptr) {
-        return false;
-    }
-
-    if (address + 8 > block_boundary + BLOCK_SIZE) {
-        uint64_t next_boundary = align_to_block_boundary(address + 8);
-        int remaining = next_boundary - address;
-        memcpy(value, &buf[offset], remaining);
-        addr_bus_unlock_block(cpu->bus, address, device, range);
-
-        buf = addr_bus_lock_block(cpu->bus, next_boundary, &device, &range);
-
-        if (buf == nullptr) {
-            return false;
-        }
-
-        memcpy((char*)value + remaining, &buf[0], 8 - remaining);
-        addr_bus_unlock_block(cpu->bus, next_boundary, device, range);
-    } else {
-
-        memcpy(value, &buf[offset], 8);
-        addr_bus_unlock_block(cpu->bus, address, device, range);
-    }
-    return true;
-#endif
+void cpu_write_1(Cpu* cpu, uint8_t data, uint64_t address) {
+    cache_write_1_except(&cpu->data_cache, cpu->bus, cpu, address, data);
 }
 
-bool cpu_read_4(Cpu* cpu, uint64_t address, uint32_t* value) {
-#ifdef USE_CACHE
-    return cache_read_4(&cpu->data_cache, cpu->bus, address, value);
-#else
-    uint64_t block_boundary = align_to_block_boundary(address);
-    uint64_t offset = address - block_boundary;
-    bus_device* device;
-    block_range range;
-    uint8_t* buf = addr_bus_lock_block(cpu->bus, address, &device, &range);
-
-    if (buf == nullptr) {
-        return false;
-    }
-
-    if (address + 4 > block_boundary + BLOCK_SIZE) {
-        uint64_t next_boundary = align_to_block_boundary(address + 4);
-        int remaining = next_boundary - address;
-        memcpy(value, &buf[offset], remaining);
-        addr_bus_unlock_block(cpu->bus, address, device, range);
-
-        buf = addr_bus_lock_block(cpu->bus, next_boundary, &device, &range);
-
-        if (buf == nullptr) {
-            return false;
-        }
-
-        memcpy((char*)value + remaining, &buf[0], 4 - remaining);
-        addr_bus_unlock_block(cpu->bus, next_boundary, device, range);
-    } else {
-
-        memcpy(value, &buf[offset], 4);
-        addr_bus_unlock_block(cpu->bus, address, device, range);
-    }
-    return true;
-#endif
+void cpu_read_8(Cpu* cpu, uint64_t address, uint64_t* value) {
+    cache_read_8_except(&cpu->data_cache, cpu->bus, cpu, address, value);
 }
 
-bool cpu_read_2(Cpu* cpu, uint64_t address, uint16_t* value) {
-#ifdef USE_CACHE
-    return cache_read_2(&cpu->data_cache, cpu->bus, address, value);
-#else
-    uint64_t block_boundary = align_to_block_boundary(address);
-    uint64_t offset = address - block_boundary;
-    bus_device* device;
-    block_range range;
-    uint8_t* buf = addr_bus_lock_block(cpu->bus, address, &device, &range);
-
-    if (buf == nullptr) {
-        return false;
-    }
-
-    if (address + 2 > block_boundary + BLOCK_SIZE) {
-        uint64_t next_boundary = align_to_block_boundary(address + 2);
-        memcpy(value, &buf[offset], 1);
-        addr_bus_unlock_block(cpu->bus, address, device, range);
-
-        buf = addr_bus_lock_block(cpu->bus, next_boundary, &device, &range);
-
-        if (buf == nullptr) {
-            return false;
-        }
-
-        memcpy((char*)value + 1, &buf[0], 1);
-        addr_bus_unlock_block(cpu->bus, next_boundary, device, range);
-    } else {
-
-        memcpy(value, &buf[offset], 2);
-        addr_bus_unlock_block(cpu->bus, address, device, range);
-    }
-    return true;
-#endif
+void cpu_read_4(Cpu* cpu, uint64_t address, uint32_t* value) {
+    cache_read_4_except(&cpu->data_cache, cpu->bus, cpu, address, value);
 }
 
-bool cpu_read_1(Cpu* cpu, uint64_t address, uint8_t* value) {
-#ifdef USE_CACHE
-    return cache_read_1(&cpu->data_cache, cpu->bus, address, value);
-#else
-    uint64_t block_boundary = align_to_block_boundary(address);
-    uint64_t offset = address - block_boundary;
-    bus_device* device;
-    block_range range;
-    uint8_t* buf = addr_bus_lock_block(cpu->bus, address, &device, &range);
-
-    if (buf == nullptr) {
-        return false;
-    }
-
-    memcpy(value, &buf[offset], 1);
-    addr_bus_unlock_block(cpu->bus, address, device, range);
-
-    return true;
-#endif
+void cpu_read_2(Cpu* cpu, uint64_t address, uint16_t* value) {
+    cache_read_2_except(&cpu->data_cache, cpu->bus, cpu, address, value);
 }
 
-bool cpu_push(Cpu* cpu, uint64_t value) {
+void cpu_read_1(Cpu* cpu, uint64_t address, uint8_t* value) {
+    cache_read_1_except(&cpu->data_cache, cpu->bus, cpu, address, value);
+}
+
+void cpu_push(Cpu* cpu, uint64_t value) {
     cpu->registers[SP_INDEX].r -= 8;
-    return cpu_write_8(cpu, value, cpu->registers[SP_INDEX].r);
+    cpu_write_8(cpu, value, cpu->registers[SP_INDEX].r);
 }
 
-bool cpu_pop(Cpu* cpu, uint64_t* out) {
-    if (!cpu_read_8(cpu, cpu->registers[SP_INDEX].r, out)) {
-        return false;
-    }
+void cpu_pop(Cpu* cpu, uint64_t* out) {
+    cpu_read_8(cpu, cpu->registers[SP_INDEX].r, out);
     cpu->registers[SP_INDEX].r += 8;
-    return true;
 }
 
 void cpu_create(Cpu* cpu, address_bus* bus) {
@@ -304,6 +123,10 @@ void cpu_create(Cpu* cpu, address_bus* bus) {
     timer_start(&cpu->timer);
 }
 
+void cpu_except(Cpu* cpu, error_t error) {
+    longjmp(cpu->interrupt_jmp, (int)error + 1);
+}
+
 // Does not free the address bus, that is owned by the caller to cpu_create
 void cpu_destroy(Cpu* cpu) {
     // TODO: Free the instruction cache
@@ -311,6 +134,16 @@ void cpu_destroy(Cpu* cpu) {
 }
 
 void cpu_run(Cpu* cpu) {
+    // Any inerrupts will jump here
+    int code = setjmp(cpu->interrupt_jmp);
+    if (code != 0) {
+        int interrupt_id = code - 1;
+        printf("Interrupt: %d\n", interrupt_id);
+        intpt(cpu, interrupt_id);
+
+        cpu->exit = true;
+    }
+
     while (!cpu->exit) {
         block* buf = instr_cache_get(&cpu->cache, cpu->registers[IP_INDEX].r);
 
@@ -340,18 +173,13 @@ void cpu_run(Cpu* cpu) {
         uint64_t block_start = cpu->registers[IP_INDEX].r;
         // Don't do a cache lookup while we are still executing the same block
         // of code
-        while (cpu->registers[IP_INDEX].r == block_start && !cpu->halt &&
-               !cpu->exit) {
+        while (cpu->registers[IP_INDEX].r == block_start && !cpu->halt) {
             uint64_t i = 0;
-            while (i < buf->len && !cpu->halt && !cpu->exit) {
+            while (!cpu->halt && i < buf->len) {
                 cpu->clock_count++;
                 instruction* instr = &buf->instructions[i];
                 cpu->registers[IP_INDEX].r += instr->instruction_size;
-                error_t err = cpu_execute(cpu, instr);
-                if (err != NO_ERROR) {
-                    printf("ERROR EXECUTING %d\n", err);
-                    abort();
-                }
+                cpu_execute(cpu, instr);
                 i++;
             }
         }

@@ -29,7 +29,7 @@ typedef enum {
 inline static error_t fetch(Cpu* cpu, uint8_t* byte) {
     if (!cache_read_1(&cpu->instruction_cache, cpu->bus,
                       cpu->registers[IP_INDEX].r, byte)) {
-        return MEMORY_ERROR;
+        return BUS_ERROR;
     }
     cpu->registers[IP_INDEX].r += 1;
     return NO_ERROR;
@@ -38,7 +38,7 @@ inline static error_t fetch(Cpu* cpu, uint8_t* byte) {
 inline static error_t fetch_2(Cpu* cpu, uint16_t* out) {
     if (!cache_read_2(&cpu->instruction_cache, cpu->bus,
                       cpu->registers[IP_INDEX].r, out)) {
-        return MEMORY_ERROR;
+        return BUS_ERROR;
     }
     cpu->registers[IP_INDEX].r += 2;
     return NO_ERROR;
@@ -47,7 +47,7 @@ inline static error_t fetch_2(Cpu* cpu, uint16_t* out) {
 inline static error_t fetch_4(Cpu* cpu, uint32_t* out) {
     if (!cache_read_4(&cpu->instruction_cache, cpu->bus,
                       cpu->registers[IP_INDEX].r, out)) {
-        return MEMORY_ERROR;
+        return BUS_ERROR;
     }
     cpu->registers[IP_INDEX].r += 4;
     return NO_ERROR;
@@ -56,7 +56,7 @@ inline static error_t fetch_4(Cpu* cpu, uint32_t* out) {
 inline static error_t fetch_8(Cpu* cpu, uint64_t* out) {
     if (!cache_read_8(&cpu->instruction_cache, cpu->bus,
                       cpu->registers[IP_INDEX].r, out)) {
-        return MEMORY_ERROR;
+        return BUS_ERROR;
     }
     cpu->registers[IP_INDEX].r += 8;
     return NO_ERROR;
@@ -151,7 +151,7 @@ static inline iop get_op2(uint8_t opcode) { return ops[opcode]; }
 inline static error_t decode_reg_operand(Cpu* cpu, instruction* instr) {
     uint8_t transfer_byte;
     if (fetch(cpu, &transfer_byte) != NO_ERROR) {
-        return MEMORY_ERROR;
+        return BUS_ERROR;
     }
     uint8_t src = transfer_byte & 0x0f;
     uint8_t dest = (transfer_byte >> 4) & 0x0f;
@@ -164,7 +164,7 @@ inline static error_t decode_reg_operand(Cpu* cpu, instruction* instr) {
 inline static error_t decode_imm_operand(Cpu* cpu, instruction* instr) {
     uint8_t transfer_byte;
     if (fetch(cpu, &transfer_byte) != NO_ERROR) {
-        return MEMORY_ERROR;
+        return BUS_ERROR;
     }
 
     uint8_t dest = (transfer_byte >> 4) & 0x0f;
@@ -189,7 +189,7 @@ inline static error_t decode_imm_operand(Cpu* cpu, instruction* instr) {
 inline static error_t decode_sp_rel_addr(Cpu* cpu, instruction* instr) {
     uint8_t byte;
     if (fetch(cpu, &byte) != NO_ERROR) {
-        return MEMORY_ERROR;
+        return BUS_ERROR;
     }
 
     uint8_t scale = 1 << ((byte >> 2) & 0x03);
@@ -209,13 +209,13 @@ inline static error_t decode_sp_rel_addr(Cpu* cpu, instruction* instr) {
     if (disp_width == 0) {
         int32_t tmp = 0;
         if (fetch_4(cpu, (uint32_t*)&tmp) != NO_ERROR) {
-            return MEMORY_ERROR;
+            return BUS_ERROR;
         }
         instr->displacement = (int64_t)tmp;
     } else {
         int16_t tmp = 0;
         if (fetch_2(cpu, (uint16_t*)&tmp) != NO_ERROR) {
-            return MEMORY_ERROR;
+            return BUS_ERROR;
         }
         instr->displacement = (int64_t)tmp;
     }
@@ -226,7 +226,7 @@ inline static error_t decode_sp_rel_addr(Cpu* cpu, instruction* instr) {
 inline static error_t decode_bis_address(Cpu* cpu, instruction* instr) {
     uint8_t byte;
     if (fetch(cpu, &byte) != NO_ERROR) {
-        return MEMORY_ERROR;
+        return BUS_ERROR;
     }
 
     uint8_t scale = 1 << ((byte >> 2) & 0x03);
@@ -244,7 +244,7 @@ inline static error_t decode_bis_address(Cpu* cpu, instruction* instr) {
     } else {
         uint8_t second_byte;
         if (fetch(cpu, &second_byte) != NO_ERROR) {
-            return MEMORY_ERROR;
+            return BUS_ERROR;
         }
         instr->base_id = (second_byte >> 4) & 0b1111;
         instr->index_id = second_byte & 0b1111;
@@ -253,13 +253,13 @@ inline static error_t decode_bis_address(Cpu* cpu, instruction* instr) {
     if (disp_width == 0) {
         int32_t tmp = 0;
         if (fetch_4(cpu, (uint32_t*)&tmp) != NO_ERROR) {
-            return MEMORY_ERROR;
+            return BUS_ERROR;
         }
         instr->displacement = (int64_t)tmp;
     } else {
         int16_t tmp = 0;
         if (fetch_2(cpu, (uint16_t*)&tmp) != NO_ERROR) {
-            return MEMORY_ERROR;
+            return BUS_ERROR;
         }
         instr->displacement = (int64_t)tmp;
     }
@@ -274,7 +274,7 @@ inline static error_t decode_pc_rel(Cpu* cpu, instruction* instr) {
     // to be invalid here
     int32_t off = 0;
     if (fetch_4(cpu, (uint32_t*)&off) != NO_ERROR) {
-        return MEMORY_ERROR;
+        return BUS_ERROR;
     }
     // Encode this as a displacement because the address from this is
     // effectively a constant
@@ -286,7 +286,7 @@ inline static error_t decode_pc_rel(Cpu* cpu, instruction* instr) {
 inline static error_t decode_mem_operand(Cpu* cpu, instruction* instr) {
     uint8_t byte;
     if (fetch(cpu, &byte) != NO_ERROR) {
-        return MEMORY_ERROR;
+        return BUS_ERROR;
     }
     int dest = (byte >> 4) & 0x0f;
     addr_mode mode = (byte >> 2) & 0x03;
@@ -313,7 +313,7 @@ error_t cpu_decode(Cpu* cpu, instruction* instr, bool* branch_point) {
     memset(instr, 0, sizeof(*instr));
     uint16_t opcode = 0;
     if (fetch(cpu, (uint8_t*)&opcode) != NO_ERROR) {
-        return MEMORY_ERROR;
+        return BUS_ERROR;
     }
 
     if (opcode == OPCODE_EXTENSION) {
@@ -321,7 +321,7 @@ error_t cpu_decode(Cpu* cpu, instruction* instr, bool* branch_point) {
 
         // Fetch the real opcode
         if (fetch(cpu, (uint8_t*)&opcode) != NO_ERROR) {
-            return MEMORY_ERROR;
+            return BUS_ERROR;
         }
         // Clear the upper 8 bits and use only the lower 4 bits to index into
         // the extended opcode tables

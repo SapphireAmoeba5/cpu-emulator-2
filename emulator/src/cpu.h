@@ -1,9 +1,10 @@
 #pragma once
 
-#include "address_bus.h"
 #include "data_cache.h"
+#include "address_bus.h"
 #include "instruction_cache.h"
 #include "timer.h"
+#include <setjmp.h>
 #include <stdbool.h>
 #include <stdint.h>
 #include <stdatomic.h>
@@ -29,7 +30,7 @@ constexpr uint64_t CLOCK_HZ = 500000000;
 
 typedef enum {
     NO_ERROR = -1,
-    MEMORY_ERROR,
+    BUS_ERROR,
     DECODE_ERROR,
     MATH_ERROR,
 } error_t;
@@ -59,6 +60,8 @@ typedef struct Cpu {
     // pointer
     reg registers[16 + 2];
 
+    // Jumps to the exception handler code when there is any exception
+    jmp_buf interrupt_jmp;
     // If the CPU is halted
     bool halt;
     // If the CPU should delete itself
@@ -74,24 +77,33 @@ typedef struct Cpu {
 
 } Cpu;
 
-bool cpu_write_8(Cpu* cpu, uint64_t data, uint64_t address);
-bool cpu_write_4(Cpu* cpu, uint32_t data, uint64_t address);
-bool cpu_write_2(Cpu* cpu, uint16_t data, uint64_t address);
-bool cpu_write_1(Cpu* cpu, uint8_t data, uint64_t address);
+/// Longjumps to `interrupt_jmp` on exception
+void cpu_write_8(Cpu* cpu, uint64_t data, uint64_t address);
+/// Longjumps to `interrupt_jmp` on exception
+void cpu_write_4(Cpu* cpu, uint32_t data, uint64_t address);
+/// Longjumps to `interrupt_jmp` on exception
+void cpu_write_2(Cpu* cpu, uint16_t data, uint64_t address);
+/// Longjumps to `interrupt_jmp` on exception
+void cpu_write_1(Cpu* cpu, uint8_t data, uint64_t address);
 
 /// `value` must not be NULL
-bool cpu_read_8(Cpu* cpu, uint64_t address, uint64_t* value);
+/// Longjumps to `interrupt_jmp` on exception
+void cpu_read_8(Cpu* cpu, uint64_t address, uint64_t* value);
 /// `value` must not be NULL
-bool cpu_read_4(Cpu* cpu, uint64_t address, uint32_t* value);
+/// Longjumps to `interrupt_jmp` on exception
+void cpu_read_4(Cpu* cpu, uint64_t address, uint32_t* value);
 /// `value` must not be NULL
-bool cpu_read_2(Cpu* cpu, uint64_t address, uint16_t* value);
+/// Longjumps to `interrupt_jmp` on exception
+void cpu_read_2(Cpu* cpu, uint64_t address, uint16_t* value);
 /// `value` must not be NULL
-bool cpu_read_1(Cpu* cpu, uint64_t address, uint8_t* value);
-bool cpu_read_n(Cpu* cpu, uint64_t address, void* out, uint64_t n);
-bool cpu_read_block(Cpu* cpu, uint64_t address, void* out);
+/// Longjumps to `interrupt_jmp` on exception
+void cpu_read_1(Cpu* cpu, uint64_t address, uint8_t* value);
 
-bool cpu_push(Cpu* cpu, uint64_t value);
-bool cpu_pop(Cpu* cpu, uint64_t* out);
+void cpu_push(Cpu* cpu, uint64_t value);
+void cpu_pop(Cpu* cpu, uint64_t* out);
+
+/// Long jumps to the Cpu's exception handler 
+void cpu_except(Cpu* cpu, error_t error);
 
 void cpu_create(Cpu* cpu, address_bus* bus);
 void cpu_destroy(Cpu* cpu);

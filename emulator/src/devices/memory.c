@@ -52,7 +52,7 @@ bool memory_destroy(bus_device* device) {
     free(mem->data);
     free(mem->locks);
     mem->length = 0;
-    return false;
+    return true;
 }
 
 bool memory_read_block(bus_device *device, uint64_t block, void *out) {

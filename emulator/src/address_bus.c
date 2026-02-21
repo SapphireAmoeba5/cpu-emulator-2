@@ -1,5 +1,5 @@
-#include "address_bus.h"
 #include "block.h"
+#include "cpu.h"
 #include "bus_device.h"
 #include "data_cache.h"
 #include "devices/memory.h"
@@ -142,6 +142,24 @@ bool addr_bus_read_block(address_bus* bus, uint64_t addr, void* in) {
     return false;
 }
 
+/// Long jumps to the Cpu's exception handler on bus error
+void addr_bus_read_block_except(address_bus* bus, Cpu* cpu, uint64_t addr, void* in) {
+    uint64_t block = addr / BLOCK_SIZE;
+    for (int i = 0; i < bus->num_devices; i++) {
+        block_range range = bus->ranges[i];
+        bus_device* device = bus->devices[i];
+
+        if (address_intersects(range, block)) {
+            uint64_t block_offset = block - range.base;
+            if(!dispatch_read_block(device, block_offset, in)) {
+                cpu_except(cpu, BUS_ERROR);
+            }
+            return;
+        }
+    }
+    cpu_except(cpu, BUS_ERROR);
+}
+
 bool addr_bus_write_block(address_bus* bus, uint64_t addr, void* out) {
     uint64_t block = addr / BLOCK_SIZE;
     for (int i = 0; i < bus->num_devices; i++) {
@@ -154,6 +172,24 @@ bool addr_bus_write_block(address_bus* bus, uint64_t addr, void* out) {
         }
     }
     return false;
+}
+
+/// Long jumps to the Cpu's exception handler on bus error
+void addr_bus_write_block_except(address_bus* bus, Cpu* cpu, uint64_t addr, void* out) {
+    uint64_t block = addr / BLOCK_SIZE;
+    for (int i = 0; i < bus->num_devices; i++) {
+        block_range range = bus->ranges[i];
+        bus_device* device = bus->devices[i];
+
+        if (address_intersects(range, block)) {
+            uint64_t block_offset = block - range.base;
+            if(!dispatch_write_block(device, block_offset, out)) {
+                cpu_except(cpu, BUS_ERROR);
+            }
+            return;
+        }
+    }
+    cpu_except(cpu, BUS_ERROR);
 }
 
 uint8_t* addr_bus_lock_block(address_bus* bus, uint64_t addr,

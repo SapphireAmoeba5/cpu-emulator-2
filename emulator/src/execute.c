@@ -10,58 +10,6 @@
 
 // #define LOOKUP_TABLE_IMPL
 
-static void intpt(Cpu* cpu, int index) {
-    if (index == 0x80) {
-        printf("Cycle: %llu\n", cpu->clock_count);
-        for (int i = 0; i < 16; i++) {
-            uint64_t value = cpu->registers[i].r;
-            printf("r%llu = %016llx (%lld)\n", (uint64_t)i, value,
-                   (int64_t)value);
-        }
-
-        printf("ip: %llu\nsp: %llu\n", cpu->registers[IP_INDEX].r,
-               cpu->registers[SP_INDEX].r);
-
-        printf("ZF | CF | OF | SF\n");
-
-        if (cpu->flags & FLAG_ZERO) {
-            printf("1  | ");
-
-        } else {
-            printf("0  | ");
-        }
-        if (cpu->flags & FLAG_CARRY) {
-
-            printf("1  | ");
-        } else {
-
-            printf("0  | ");
-        }
-        if (cpu->flags & FLAG_OVERFLOW) {
-
-            printf("1  | ");
-        } else {
-
-            printf("0  | ");
-        }
-        if (cpu->flags & FLAG_SIGN) {
-
-            printf("1\n");
-        } else {
-
-            printf("0\n");
-        }
-
-        double elapsed = timer_elapsed_seconds(&cpu->timer);
-        double instructions_per_second = cpu->clock_count / elapsed;
-        double mips = instructions_per_second / 1e6;
-        printf("MIPS: %f\n", mips);
-
-        cpu->exit = true;
-    } else if (index == 0x82) {
-        printf("DEBUG PRINT %llu\n", cpu->clock_count);
-    }
-}
 
 static inline uint64_t do_add(Cpu* cpu, uint64_t left, uint64_t right) {
     uint64_t sum = left + right;
@@ -195,31 +143,22 @@ static inline uint64_t calculate_addr(Cpu* cpu, instruction* instr) {
     return (base * base_scale) + (index * index_scale) + disp;
 }
 
-static inline error_t deref_memory(Cpu* cpu, instruction* instr,
-                                   uint64_t* value) {
+static inline void deref_memory(Cpu* cpu, instruction* instr, uint64_t* value) {
     uint64_t address = calculate_addr(cpu, instr);
 
     switch (instr->size) {
     case 0:
-        if (!cpu_read_1(cpu, address, (uint8_t*)value)) {
-            return MEMORY_ERROR;
-        }
-        return NO_ERROR;
+        cpu_read_1(cpu, address, (uint8_t*)value);
+        return;
     case 1:
-        if (!cpu_read_2(cpu, address, (uint16_t*)value)) {
-            return MEMORY_ERROR;
-        }
-        return NO_ERROR;
+        cpu_read_2(cpu, address, (uint16_t*)value);
+        return;
     case 2:
-        if (!cpu_read_4(cpu, address, (uint32_t*)value)) {
-            return MEMORY_ERROR;
-        }
-        return NO_ERROR;
+        cpu_read_4(cpu, address, (uint32_t*)value);
+        return;
     case 3:
-        if (!cpu_read_8(cpu, address, value)) {
-            return MEMORY_ERROR;
-        }
-        return NO_ERROR;
+        cpu_read_8(cpu, address, value);
+        return;
     default:
         UNREACHABLE();
     }
@@ -266,158 +205,122 @@ static bool is_condition(Cpu* cpu, condition cond) {
     }
 }
 
-static error_t handle_invl(Cpu* cpu, instruction* instr, uint64_t src) {
+static void handle_invl(Cpu* cpu, instruction* instr, uint64_t src) {
     printf("Invalid operation called. This is a bug\n");
     abort();
 }
 
-static error_t handle_halt(Cpu* cpu, instruction* instr, uint64_t src) {
+static void handle_halt(Cpu* cpu, instruction* instr, uint64_t src) {
     printf("CPU HALTED\n");
     cpu->halt = true;
-    return NO_ERROR;
 }
 
-static error_t handle_int(Cpu* cpu, instruction* instr, uint64_t src) {
-    intpt(cpu, src);
-    return NO_ERROR;
+static void handle_int(Cpu* cpu, instruction* instr, uint64_t src) {
+    cpu_except(cpu, src);
 }
 
-static error_t handle_mov(Cpu* cpu, instruction* instr, uint64_t src) {
+static void handle_mov(Cpu* cpu, instruction* instr, uint64_t src) {
     *instr->dest = src;
-    return NO_ERROR;
 }
 
-static error_t handle_str(Cpu* cpu, instruction* instr, uint64_t address) {
+static void handle_str(Cpu* cpu, instruction* instr, uint64_t address) {
     uint64_t value = *instr->dest;
 
     switch (instr->size) {
     case 0:
-        if (!cpu_write_1(cpu, value, address)) {
-            return MEMORY_ERROR;
-        }
-        return NO_ERROR;
+        cpu_write_1(cpu, value, address);
+        return;
     case 1:
-        if (!cpu_write_2(cpu, value, address)) {
-            return MEMORY_ERROR;
-        }
-        return NO_ERROR;
+        cpu_write_2(cpu, value, address);
+        return;
     case 2:
-        if (!cpu_write_4(cpu, value, address)) {
-            return MEMORY_ERROR;
-        }
-        return NO_ERROR;
+        cpu_write_4(cpu, value, address);
+        return;
     case 3:
-        if (!cpu_write_8(cpu, value, address)) {
-            return MEMORY_ERROR;
-        }
-        return NO_ERROR;
+        cpu_write_8(cpu, value, address);
+        return;
     default:
         UNREACHABLE();
     }
 }
-static error_t handle_add(Cpu* cpu, instruction* instr, uint64_t src) {
+static void handle_add(Cpu* cpu, instruction* instr, uint64_t src) {
     *instr->dest = do_add(cpu, *instr->dest, src);
-    return NO_ERROR;
 }
-static error_t handle_sub(Cpu* cpu, instruction* instr, uint64_t src) {
+static void handle_sub(Cpu* cpu, instruction* instr, uint64_t src) {
     *instr->dest = do_sub(cpu, *instr->dest, src);
-    return NO_ERROR;
 }
-static error_t handle_mul(Cpu* cpu, instruction* instr, uint64_t src) {
+static void handle_mul(Cpu* cpu, instruction* instr, uint64_t src) {
     *instr->dest = do_mul(cpu, *instr->dest, src);
-    return NO_ERROR;
 }
-static error_t handle_div(Cpu* cpu, instruction* instr, uint64_t src) {
+static void handle_div(Cpu* cpu, instruction* instr, uint64_t src) {
     if (src == 0) {
-        return MATH_ERROR;
+        cpu_except(cpu, MATH_ERROR);
     }
 
     *instr->dest = do_div(cpu, *instr->dest, src);
-    return NO_ERROR;
 }
-static error_t handle_idiv(Cpu* cpu, instruction* instr, uint64_t src) {
+static void handle_idiv(Cpu* cpu, instruction* instr, uint64_t src) {
     if (src == 0) {
-        return MATH_ERROR;
+        cpu_except(cpu, MATH_ERROR);
     }
 
     *instr->dest = do_idiv(cpu, *instr->dest, src);
-    return NO_ERROR;
 }
-static error_t handle_and(Cpu* cpu, instruction* instr, uint64_t src) {
+static void handle_and(Cpu* cpu, instruction* instr, uint64_t src) {
     *instr->dest &= src;
     do_bitwise_flags(cpu, *instr->dest);
-    return NO_ERROR;
 }
-static error_t handle_or(Cpu* cpu, instruction* instr, uint64_t src) {
+static void handle_or(Cpu* cpu, instruction* instr, uint64_t src) {
     *instr->dest |= src;
     do_bitwise_flags(cpu, *instr->dest);
-    return NO_ERROR;
 }
-static error_t handle_xor(Cpu* cpu, instruction* instr, uint64_t src) {
+static void handle_xor(Cpu* cpu, instruction* instr, uint64_t src) {
     *instr->dest ^= src;
     do_bitwise_flags(cpu, *instr->dest);
-    return NO_ERROR;
 }
-static error_t handle_cmp(Cpu* cpu, instruction* instr, uint64_t src) {
+static void handle_cmp(Cpu* cpu, instruction* instr, uint64_t src) {
     do_sub(cpu, *instr->dest, src);
-    return NO_ERROR;
 }
-static error_t handle_test(Cpu* cpu, instruction* instr, uint64_t src) {
+static void handle_test(Cpu* cpu, instruction* instr, uint64_t src) {
     uint64_t result = *instr->dest & src;
     do_bitwise_flags(cpu, result);
-    return NO_ERROR;
 }
 
-static error_t handle_rdt(Cpu* cpu, instruction* instr, uint64_t src) {
+static void handle_rdt(Cpu* cpu, instruction* instr, uint64_t src) {
     double elapsed = timer_elapsed_seconds(&cpu->timer);
     uint64_t clocks = elapsed * CLOCK_HZ;
     *instr->dest = clocks;
-    return NO_ERROR;
 }
 
-static error_t handle_call(Cpu* cpu, instruction* instr, uint64_t src) {
-    if (!cpu_push(cpu, cpu->registers[IP_INDEX].r)) {
-        return MEMORY_ERROR;
-    }
+static void handle_call(Cpu* cpu, instruction* instr, uint64_t src) {
+    cpu_push(cpu, cpu->registers[IP_INDEX].r);
     cpu->registers[IP_INDEX].r = src;
-    return NO_ERROR;
 }
 
-static error_t handle_ret(Cpu* cpu, instruction* instr, uint64_t src) {
+static void handle_ret(Cpu* cpu, instruction* instr, uint64_t src) {
     uint64_t ret_address = 0;
-    if (!cpu_pop(cpu, &ret_address)) {
-        return MEMORY_ERROR;
-    }
+    cpu_pop(cpu, &ret_address);
     cpu->registers[IP_INDEX].r = ret_address;
-    return NO_ERROR;
 }
 
-static error_t handle_push(Cpu* cpu, instruction* instr, uint64_t src) {
-    if (!cpu_push(cpu, *instr->dest)) {
-        return MEMORY_ERROR;
-    }
-    return NO_ERROR;
+static void handle_push(Cpu* cpu, instruction* instr, uint64_t src) {
+    cpu_push(cpu, *instr->dest);
 }
 
-static error_t handle_pop(Cpu* cpu, instruction* instr, uint64_t src) {
-    if (!cpu_pop(cpu, instr->dest)) {
-        return MEMORY_ERROR;
-    }
-    return NO_ERROR;
+static void handle_pop(Cpu* cpu, instruction* instr, uint64_t src) {
+    cpu_pop(cpu, instr->dest);
 }
 
-static error_t handle_sysinfo(Cpu* cpu, instruction* instr, uint64_t src) {
+static void handle_sysinfo(Cpu* cpu, instruction* instr, uint64_t src) {
     uint64_t* r0 = &cpu->registers[0].r;
 
-    if(*r0 == 1) {
+    if (*r0 == 1) {
         *r0 = CLOCK_HZ;
         cpu->registers[1].r = BLOCK_SIZE;
     }
-    
-    return NO_ERROR;
 }
 
-error_t (*op_handlers[op_LENGTH])(Cpu* cpu, instruction* instr,
+void (*op_handlers[op_LENGTH])(Cpu* cpu, instruction* instr,
                                   uint64_t src) = {
     [op_invl] = handle_invl,      [op_halt] = handle_halt,
     [op_int] = handle_int,        [op_mov] = handle_mov,
@@ -431,7 +334,7 @@ error_t (*op_handlers[op_LENGTH])(Cpu* cpu, instruction* instr,
     [op_push] = handle_push,      [op_pop] = handle_pop,
     [op_sysinfo] = handle_sysinfo};
 
-error_t cpu_execute(Cpu* cpu, instruction* instr) {
+void cpu_execute(Cpu* cpu, instruction* instr) {
     uint64_t src = 0;
 
     // src = instr->immediate;
@@ -446,14 +349,12 @@ error_t cpu_execute(Cpu* cpu, instruction* instr) {
         src = calculate_addr(cpu, instr);
         break;
     case op_src_dereference_mem:
-        if (deref_memory(cpu, instr, &src) != NO_ERROR) {
-            return MEMORY_ERROR;
-        }
+        deref_memory(cpu, instr, &src);
         break;
     }
 
     if (!is_condition(cpu, instr->cond)) {
-        return NO_ERROR;
+        return;
     }
 
 #ifdef LOOKUP_TABLE_IMPL
@@ -461,45 +362,65 @@ error_t cpu_execute(Cpu* cpu, instruction* instr) {
 #else
     switch (instr->op) {
     case op_halt:
-        return handle_halt(cpu, instr, src);
+        handle_halt(cpu, instr, src);
+        return;
     case op_int:
-        return handle_int(cpu, instr, src);
+        handle_int(cpu, instr, src);
+        return;
     case op_mov:
-        return handle_mov(cpu, instr, src);
+        handle_mov(cpu, instr, src);
+        return;
     case op_str:
-        return handle_str(cpu, instr, src);
+        handle_str(cpu, instr, src);
+        return;
     case op_add:
-        return handle_add(cpu, instr, src);
+        handle_add(cpu, instr, src);
+        return;
     case op_sub:
-        return handle_sub(cpu, instr, src);
+        handle_sub(cpu, instr, src);
+        return;
     case op_mul:
-        return handle_mul(cpu, instr, src);
+        handle_mul(cpu, instr, src);
+        return;
     case op_div:
-        return handle_div(cpu, instr, src);
+        handle_div(cpu, instr, src);
+        return;
     case op_idiv:
-        return handle_idiv(cpu, instr, src);
+        handle_idiv(cpu, instr, src);
+        return;
     case op_and:
-        return handle_and(cpu, instr, src);
+        handle_and(cpu, instr, src);
+        return;
     case op_or:
-        return handle_or(cpu, instr, src);
+        handle_or(cpu, instr, src);
+        return;
     case op_xor:
-        return handle_xor(cpu, instr, src);
+        handle_xor(cpu, instr, src);
+        return;
     case op_cmp:
-        return handle_cmp(cpu, instr, src);
+        handle_cmp(cpu, instr, src);
+        return;
     case op_test:
-        return handle_test(cpu, instr, src);
+        handle_test(cpu, instr, src);
+        return;
     case op_push:
-        return handle_push(cpu, instr, src);
+        handle_push(cpu, instr, src);
+        return;
     case op_pop:
-        return handle_pop(cpu, instr, src);
+        handle_pop(cpu, instr, src);
+        return;
     case op_rdt:
-        return handle_rdt(cpu, instr, src);
+        handle_rdt(cpu, instr, src);
+        return;
     case op_call:
-        return handle_call(cpu, instr, src);
+        handle_call(cpu, instr, src);
+        return;
     case op_ret:
-        return handle_ret(cpu, instr, src);
+        handle_ret(cpu, instr, src);
+        return;
     case op_sysinfo:
-        return handle_sysinfo(cpu, instr, src);
+        handle_sysinfo(cpu, instr, src);
+        return;
     case op_LENGTH:
     case op_invl:
         UNREACHABLE();

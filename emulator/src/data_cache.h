@@ -36,6 +36,15 @@ bool cache_write_2(cache* cache, address_bus* bus, uint64_t address,
 bool cache_write_1(cache* cache, address_bus* bus, uint64_t address,
                    uint8_t value);
 
+void cache_write_8_except(cache* cache, address_bus* bus, struct Cpu* cpu,
+                          uint64_t address, uint64_t value);
+void cache_write_4_except(cache* cache, address_bus* bus, struct Cpu* cpu,
+                          uint64_t address, uint32_t value);
+void cache_write_2_except(cache* cache, address_bus* bus, struct Cpu* cpu,
+                          uint64_t address, uint16_t value);
+void cache_write_1_except(cache* cache, address_bus* bus, struct Cpu* cpu,
+                          uint64_t address, uint8_t value);
+
 bool cache_read_8(cache* cache, address_bus* bus, uint64_t address,
                   uint64_t* dest);
 bool cache_read_4(cache* cache, address_bus* bus, uint64_t address,
@@ -44,3 +53,12 @@ bool cache_read_2(cache* cache, address_bus* bus, uint64_t address,
                   uint16_t* dest);
 bool cache_read_1(cache* cache, address_bus* bus, uint64_t address,
                   uint8_t* dest);
+
+void cache_read_8_except(cache* cache, address_bus* bus, struct Cpu* cpu,
+                         uint64_t address, uint64_t* dest);
+void cache_read_4_except(cache* cache, address_bus* bus, struct Cpu* cpu,
+                         uint64_t address, uint32_t* dest);
+void cache_read_2_except(cache* cache, address_bus* bus, struct Cpu* cpu,
+                         uint64_t address, uint16_t* dest);
+void cache_read_1_except(cache* cache, address_bus* bus, struct Cpu* cpu,
+                         uint64_t address, uint8_t* dest);
