@@ -1,11 +1,13 @@
 #pragma once
 
 #include "bus_device.h"
+#include "sync/spinlock.h"
 
 
 typedef struct memory {
     BUS_DEVICE_IMPL
     uint8_t* data;
+    spinlock* locks;
     size_t length;
 } memory;
 

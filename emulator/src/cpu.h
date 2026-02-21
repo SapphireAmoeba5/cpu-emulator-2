@@ -6,6 +6,7 @@
 #include "timer.h"
 #include <stdbool.h>
 #include <stdint.h>
+#include <stdatomic.h>
 
 #ifdef NDEBUG
 #define UNREACHABLE() __builtin_unreachable()

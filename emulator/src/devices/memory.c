@@ -29,6 +29,8 @@ memory* memory_create(uint64_t blocks) {
     }
 
     mem->data = malloc(blocks * BLOCK_SIZE);
+    // One spinlock per block
+    mem->locks = malloc(blocks * sizeof(spinlock));
     mem->length = blocks * BLOCK_SIZE;
 
     if(mem->data == NULL) {
@@ -48,30 +50,40 @@ bool memory_init(bus_device* device, uint64_t* requested_range) {
 bool memory_destroy(bus_device* device) {
     memory* mem = (memory*)device;
     free(mem->data);
+    free(mem->locks);
     mem->length = 0;
     return false;
 }
 
 bool memory_read_block(bus_device *device, uint64_t block, void *out) {
     memory* mem = (memory*)device;
+    spinlock_lock(&mem->locks[block]);
+
     memcpy(out, &mem->data[block * BLOCK_SIZE], BLOCK_SIZE);
+
+    spinlock_unlock(&mem->locks[block]);
     return true;
 }
 
 bool memory_write_block(bus_device *device, uint64_t block, void *in) {
     memory* mem = (memory*)device;
+    spinlock_lock(&mem->locks[block]);
+
     memcpy(&mem->data[block * BLOCK_SIZE], in, BLOCK_SIZE);
+
+    spinlock_unlock(&mem->locks[block]);
     return true;
 }
 
 uint8_t* memory_lock_block(bus_device* device, uint64_t block) {
-    // TODO: Make sure in the future we add locks here
     memory* mem = (memory*)device;
+    spinlock_lock(&mem->locks[block]);
     uint64_t off = block * BLOCK_SIZE;
 
     return &mem->data[off];
 }
 
 void memory_unlock_block(bus_device* device, uint64_t block) {
-    // Nothing for now
+    memory* mem = (memory*)device;
+    spinlock_unlock(&mem->locks[block]);
 }

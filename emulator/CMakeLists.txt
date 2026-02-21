@@ -30,6 +30,7 @@ add_executable(${PROJECT_NAME}
     src/bus_device.c
     src/devices/memory.c
     src/data_cache.c
+    src/sync/spinlock.c
     thirdparty/xxhash/xxhash.c
 )
 

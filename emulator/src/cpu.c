@@ -6,6 +6,7 @@
 #include "execute.h"
 #include "instruction_cache.h"
 #include "memory.h"
+#include <stdatomic.h>
 #include <stdbool.h>
 #include <stdckdint.h>
 #include <stdint.h>
