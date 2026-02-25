@@ -1,13 +1,21 @@
 #pragma once
 
-#include "data_cache.h"
 #include "address_bus.h"
+#include "data_cache.h"
 #include "instruction_cache.h"
 #include "timer.h"
 #include <setjmp.h>
+#include <stdatomic.h>
 #include <stdbool.h>
 #include <stdint.h>
-#include <stdatomic.h>
+
+#ifdef __APPLE__
+// On MacOS, the normal setjmp/longjmp have the overhead of saving and
+// reloading the signal mask every time they are called. We don't need to
+// preserve signal masks so these are the best choice for speed
+#define setjmp(a) _setjmp(a)
+#define longjmp(a, b) _longjmp(a, b)
+#endif
 
 #ifdef NDEBUG
 #define UNREACHABLE() __builtin_unreachable()
@@ -102,7 +110,7 @@ void cpu_read_1(Cpu* cpu, uint64_t address, uint8_t* value);
 void cpu_push(Cpu* cpu, uint64_t value);
 void cpu_pop(Cpu* cpu, uint64_t* out);
 
-/// Long jumps to the Cpu's exception handler 
+/// Long jumps to the Cpu's exception handler
 void cpu_except(Cpu* cpu, error_t error);
 
 void cpu_create(Cpu* cpu, address_bus* bus);
