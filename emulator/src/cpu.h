@@ -1,7 +1,6 @@
 #pragma once
 
 #include "address_bus.h"
-#include "data_cache.h"
 #include "instruction_cache.h"
 #include "timer.h"
 #include <setjmp.h>
