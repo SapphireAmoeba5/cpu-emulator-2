@@ -79,10 +79,6 @@ typedef struct Cpu {
 
     instruction_cache cache;
     timer timer;
-
-    cache instruction_cache;
-    cache data_cache;
-
 } Cpu;
 
 /// Longjumps to `interrupt_jmp` on exception

@@ -1,7 +1,6 @@
 #include "cpu.h"
 #include "address_bus.h"
 #include "bus_device.h"
-#include "data_cache.h"
 #include "decode.h"
 #include "execute.h"
 #include "instruction_cache.h"
@@ -70,34 +69,50 @@ static void intpt(Cpu* cpu, int index) {
 }
 
 void cpu_write_8(Cpu* cpu, uint64_t data, uint64_t address) {
-    cache_write_8_except(&cpu->data_cache, cpu->bus, cpu, address, data);
+    if(!address_bus_write_n(cpu->bus, address, &data, 8)) {
+        cpu_except(cpu, BUS_ERROR);
+    }
 }
 void cpu_write_4(Cpu* cpu, uint32_t data, uint64_t address) {
-    cache_write_4_except(&cpu->data_cache, cpu->bus, cpu, address, data);
+    if(!address_bus_write_n(cpu->bus, address, &data, 4)) {
+        cpu_except(cpu, BUS_ERROR);
+    }
 }
 
 void cpu_write_2(Cpu* cpu, uint16_t data, uint64_t address) {
-    cache_write_1_except(&cpu->data_cache, cpu->bus, cpu, address, data);
+    if(!address_bus_write_n(cpu->bus, address, &data, 2)) {
+        cpu_except(cpu, BUS_ERROR);
+    }
 }
 
 void cpu_write_1(Cpu* cpu, uint8_t data, uint64_t address) {
-    cache_write_1_except(&cpu->data_cache, cpu->bus, cpu, address, data);
+    if(!address_bus_write_n(cpu->bus, address, &data, 1)) {
+        cpu_except(cpu, BUS_ERROR);
+    }
 }
 
 void cpu_read_8(Cpu* cpu, uint64_t address, uint64_t* value) {
-    cache_read_8_except(&cpu->data_cache, cpu->bus, cpu, address, value);
+    if(!address_bus_read_n(cpu->bus, address, value, 8)) {
+        cpu_except(cpu, BUS_ERROR);
+    }
 }
 
 void cpu_read_4(Cpu* cpu, uint64_t address, uint32_t* value) {
-    cache_read_4_except(&cpu->data_cache, cpu->bus, cpu, address, value);
+    if(!address_bus_read_n(cpu->bus, address, value, 4)) {
+        cpu_except(cpu, BUS_ERROR);
+    }
 }
 
 void cpu_read_2(Cpu* cpu, uint64_t address, uint16_t* value) {
-    cache_read_2_except(&cpu->data_cache, cpu->bus, cpu, address, value);
+    if(!address_bus_read_n(cpu->bus, address, value, 2)) {
+        cpu_except(cpu, BUS_ERROR);
+    }
 }
 
 void cpu_read_1(Cpu* cpu, uint64_t address, uint8_t* value) {
-    cache_read_1_except(&cpu->data_cache, cpu->bus, cpu, address, value);
+    if(!address_bus_read_n(cpu->bus, address, value, 1)) {
+        cpu_except(cpu, BUS_ERROR);
+    }
 }
 
 void cpu_push(Cpu* cpu, uint64_t value) {
@@ -112,11 +127,6 @@ void cpu_pop(Cpu* cpu, uint64_t* out) {
 
 void cpu_create(Cpu* cpu, address_bus* bus) {
     memset(cpu, 0, sizeof(Cpu));
-
-    memset(&cpu->data_cache.addresses, UNOCCUPIED_LINE,
-           sizeof(cpu->data_cache.addresses));
-    memset(&cpu->instruction_cache.addresses, UNOCCUPIED_LINE,
-           sizeof(cpu->instruction_cache.addresses));
 
     cpu->cache = instr_cache_create();
     cpu->bus = bus;
@@ -176,12 +186,13 @@ void cpu_run(Cpu* cpu) {
         while (cpu->registers[IP_INDEX].r == block_start && !cpu->halt) {
             uint64_t i = 0;
             while (!cpu->halt && i < buf->len) {
-                cpu->clock_count++;
                 instruction* instr = &buf->instructions[i];
                 cpu->registers[IP_INDEX].r += instr->instruction_size;
                 cpu_execute(cpu, instr);
                 i++;
             }
+            cpu->clock_count += i;
+            // cpu->clock_count += i;
         }
     }
 }

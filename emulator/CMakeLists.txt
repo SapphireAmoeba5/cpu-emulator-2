@@ -6,7 +6,10 @@ set(CMAKE_C_STANDARD_REQUIRED ON)
 
 set(CMAKE_EXPORT_COMPILE_COMMANDS TRUE)
 
-option(USE_CACHE "Use the cache implementation when accessing memory" ON)
+if(MSVC)
+    message(FATAL_ERROR "MSVC not supported")
+endif()
+
 
 
 # Link time optimization
@@ -28,11 +31,10 @@ add_executable(${PROJECT_NAME}
     src/block.c
     src/address_bus.c
     src/bus_device.c
-    src/devices/memory.c
-    src/data_cache.c
     src/sync/spinlock.c
     thirdparty/xxhash/xxhash.c
 )
+
 
 target_include_directories(${PROJECT_NAME} PUBLIC
     src/
@@ -40,9 +42,8 @@ target_include_directories(${PROJECT_NAME} PUBLIC
     thirdparty/xxhash/
 )
 
-if(USE_CACHE)
-    target_compile_definitions(${PROJECT_NAME} PRIVATE USE_CACHE=1)
-endif()
+# Compiler flags
+target_compile_options(${PROJECT_NAME} PRIVATE -Wall -Wextra)
 
 # Toggle platform specific files
 if(APPLE)

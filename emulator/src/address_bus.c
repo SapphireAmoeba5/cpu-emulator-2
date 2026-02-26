@@ -1,217 +1,219 @@
-#include "block.h"
-#include "cpu.h"
-#include "bus_device.h"
-#include "data_cache.h"
-#include "devices/memory.h"
+#include "address_bus.h"
 #include <assert.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
-inline static uint64_t next_aligned(uint64_t n, uint64_t alignment) {
+// Gets the next power of two greater than or equal to `n`
+inline static uint64_t next_p2(uint64_t n) {
+    n -= 1;
+    n |= n >> 1;
+    n |= n >> 2;
+    n |= n >> 4;
+    n |= n >> 8;
+    n |= n >> 16;
+    n |= n >> 32;
+    n += 1;
+    return n;
+}
+
+/// Returns the addrss mask of `size`.
+/// Size must be a power of two
+inline static uint64_t addrmask(uint64_t size) { return ~(size - 1); }
+
+bool address_intersects(uint64_t a, uint64_t a_size, uint64_t b,
+                        uint64_t b_size) {
+    return (a <= b && a + a_size > b) || (b <= a && b + b_size > a);
+}
+
+inline static uint64_t align_next(uint64_t n, uint64_t alignment) {
     return (n + alignment - 1) / alignment * alignment;
 }
 
-inline static bool dispatch_init(bus_device* device, uint64_t* requested) {
-    switch (device->type) {
-    case device_memory:
-        return memory_init(device, requested);
-    case device_custom:
-        return device->vtable->device_init(device, requested);
-    }
+/// Aligns `n` to the previous alignment that is aligned by `alignment`
+/// If `n` is already aligned then this function returns `n`
+inline static uint64_t align_prev(uint64_t n, uint64_t alignment) {
+    return n - (n % alignment);
 }
 
-inline static bool dispatch_destroy(bus_device* device) {
-    switch (device->type) {
-    case device_memory:
-        return memory_destroy(device);
-    case device_custom:
-        return device->vtable->device_destroy(device);
-    }
-}
-inline static bool dispatch_read_block(bus_device* device, uint64_t block,
-                                       void* out) {
-    switch (device->type) {
-    case device_memory:
-        return memory_read_block(device, block, out);
-    case device_custom:
-        return device->vtable->device_read_block(device, block, out);
-    }
-}
-inline static bool dispatch_write_block(bus_device* device, uint64_t off,
-                                        void* in) {
-    switch (device->type) {
-    case device_memory:
-        return memory_write_block(device, off, in);
-    case device_custom:
-        return device->vtable->device_write_block(device, off, in);
-    }
-}
+void address_bus_init(address_bus* bus) { memset(bus, 0, sizeof(*bus)); }
 
-inline static uint8_t* dispatch_lock_block(bus_device* device, uint64_t block) {
-    switch (device->type) {
-    case device_memory:
-        return memory_lock_block(device, block);
-    case device_custom:
-        return device->vtable->device_lock_block(device, block);
-    }
-}
+bool address_bus_write_n(address_bus* bus, uint64_t address, void* src,
+                         uint64_t n) {
+    for (uint64_t i = 0; i < bus->mem_count; i++) {
+        memory* mem = &bus->mem[i];
 
-inline static void dispatch_unlock_block(bus_device* device, uint64_t block) {
-    switch (device->type) {
-    case device_memory:
-        memory_unlock_block(device, block);
-        break;
-    case device_custom:
-        device->vtable->device_unlock_block(device, block);
-        break;
-    }
-}
+        if ((address & addrmask(mem->size)) == mem->base_address) {
+            if (address + n > mem->base_address + mem->size) {
+                return false;
+            }
 
-void addr_bus_init(address_bus* bus) { memset(bus, 0, sizeof(address_bus)); }
-void addr_bus_destroy(address_bus* bus) {
-    for (int i = 0; i < bus->num_devices; i++) {
-        bus_device* device = bus->devices[i];
-        dispatch_destroy(device);
-        free(device);
-    }
-}
+            uint64_t offset = address & (mem->size - 1);
+            memcpy(mem->memory + offset, src, n);
 
-bool addr_bus_add_device(address_bus* bus, bus_device* device) {
-    if (bus->num_devices >= MAX_DEVICES) {
-        return false;
-    }
-
-    uint64_t reqested;
-    if (!dispatch_init(device, &reqested)) {
-        return false;
-    }
-
-    block_range range;
-    range.range = reqested;
-    if (bus->num_devices == 0) {
-        range.base = 0;
-    } else {
-        block_range last = bus->ranges[bus->num_devices - 1];
-        range.base = last.base + last.range + 1;
-    }
-    bus->devices[bus->num_devices] = device;
-    bus->ranges[bus->num_devices] = range;
-    bus->num_devices += 1;
-
-    return true;
-}
-
-void addr_bus_pretty_print(address_bus* bus) {
-    printf("%zu devices:\n", bus->num_devices);
-    for (int i = 0; i < bus->num_devices; i++) {
-        block_range range = bus->ranges[i];
-
-        printf("%016llx %016llx (%llu %llu)\n", range.base * BLOCK_SIZE,
-               (range.base + range.range) * BLOCK_SIZE, range.base * BLOCK_SIZE,
-               (range.base + range.range) * BLOCK_SIZE);
-    }
-}
-
-bool addr_bus_intersects(address_bus* bus, block_range range) {
-    for (int i = 0; i < bus->num_devices; i++) {
-        if (intersects(range, bus->ranges[i])) {
             return true;
         }
     }
 
+    // TODO: Iterate over devices
     return false;
 }
 
-inline static bool address_intersects(block_range range, uint64_t addr) {
-    return addr >= range.base && addr <= range.base + range.range;
-}
+bool address_bus_read_n(address_bus* bus, uint64_t address, void* dst,
+                        uint64_t n) {
+    for (uint64_t i = 0; i < bus->mem_count; i++) {
+        memory* mem = &bus->mem[i];
 
-bool addr_bus_read_block(address_bus* bus, uint64_t addr, void* in) {
-    uint64_t block = addr / BLOCK_SIZE;
-    for (int i = 0; i < bus->num_devices; i++) {
-        block_range range = bus->ranges[i];
-        bus_device* device = bus->devices[i];
-
-        if (address_intersects(range, block)) {
-            uint64_t block_offset = block - range.base;
-            return dispatch_read_block(device, block_offset, in);
-        }
-    }
-    return false;
-}
-
-/// Long jumps to the Cpu's exception handler on bus error
-void addr_bus_read_block_except(address_bus* bus, Cpu* cpu, uint64_t addr, void* in) {
-    uint64_t block = addr / BLOCK_SIZE;
-    for (int i = 0; i < bus->num_devices; i++) {
-        block_range range = bus->ranges[i];
-        bus_device* device = bus->devices[i];
-
-        if (address_intersects(range, block)) {
-            uint64_t block_offset = block - range.base;
-            if(!dispatch_read_block(device, block_offset, in)) {
-                cpu_except(cpu, BUS_ERROR);
+        if ((address & addrmask(mem->size)) == mem->base_address) {
+            if (address + n >= mem->base_address + mem->size) {
+                return false;
             }
-            return;
+
+            uint64_t offset = address & (mem->size - 1);
+            memcpy(dst, mem->memory + offset, n);
+
+            return true;
         }
     }
-    cpu_except(cpu, BUS_ERROR);
-}
 
-bool addr_bus_write_block(address_bus* bus, uint64_t addr, void* out) {
-    uint64_t block = addr / BLOCK_SIZE;
-    for (int i = 0; i < bus->num_devices; i++) {
-        block_range range = bus->ranges[i];
-        bus_device* device = bus->devices[i];
-
-        if (address_intersects(range, block)) {
-            uint64_t block_offset = block - range.base;
-            return dispatch_write_block(device, block_offset, out);
-        }
-    }
+    // TODO: Iterate over devices
     return false;
 }
 
-/// Long jumps to the Cpu's exception handler on bus error
-void addr_bus_write_block_except(address_bus* bus, Cpu* cpu, uint64_t addr, void* out) {
-    uint64_t block = addr / BLOCK_SIZE;
-    for (int i = 0; i < bus->num_devices; i++) {
-        block_range range = bus->ranges[i];
-        bus_device* device = bus->devices[i];
+bool address_bus_add_memory(address_bus* bus, uint64_t address, uint64_t size) {
+    // There is no power of two greater than this representable in an 8 byte
+    // integer
+    if (size > 0x8000000000000000) {
+        return false;
+    }
 
-        if (address_intersects(range, block)) {
-            uint64_t block_offset = block - range.base;
-            if(!dispatch_write_block(device, block_offset, out)) {
-                cpu_except(cpu, BUS_ERROR);
-            }
-            return;
+    if (bus->mappings_count >= MAX_DEVICES) {
+        return false;
+    }
+
+    // Technically trying to add zero bytes is always successful and we don't
+    // need to do any work
+    if (size == 0) {
+        return true;
+    }
+
+    size = next_p2(size);
+
+    uint64_t base_address = align_prev(address, size);
+    char* block = malloc(size);
+
+    bus_mapping mapping = {
+        .device = block,
+        .base_address = base_address,
+        .size = size,
+        .actual_size = size,
+        .is_memory = true,
+    };
+
+    if (bus->mappings_count == 0) {
+        bus->mappings[bus->mappings_count++] = mapping;
+        return true;
+
+    } else if (mapping.base_address <= bus->mappings[0].base_address) {
+        bus_mapping* first = &bus->mappings[0];
+        if (address_intersects(mapping.base_address, mapping.size,
+                               first->base_address, first->size)) {
+            return false;
+        }
+        memmove(first + 1, first, bus->mappings_count * sizeof(*first));
+        bus->mappings[0] = mapping;
+        bus->mappings_count += 1;
+
+        return true;
+    }
+
+    for (uint64_t i = 0; i < bus->mappings_count - 1; i++) {
+        bus_mapping left = bus->mappings[i];
+        bus_mapping right = bus->mappings[i + 1];
+
+        if (address_intersects(base_address, size, left.base_address,
+                               left.size)) {
+            return false;
+        } else if (address_intersects(base_address, size, right.base_address,
+                                      right.size)) {
+            return false;
+        }
+
+        if (base_address > left.base_address &&
+            base_address < right.base_address) {
+            memmove(&bus->mappings[i + 1], &bus->mappings[i],
+                    bus->mappings_count * sizeof(bus->mappings[0]));
+
+            bus->mappings[i] = mapping;
+            return true;
         }
     }
-    cpu_except(cpu, BUS_ERROR);
+
+    bus->mappings[bus->mappings_count++] = mapping;
+
+    return true;
 }
 
-uint8_t* addr_bus_lock_block(address_bus* bus, uint64_t addr,
-                             bus_device** device_out, block_range* range_out) {
-    uint64_t block = addr / BLOCK_SIZE;
-    for (int i = 0; i < bus->num_devices; i++) {
-        block_range range = bus->ranges[i];
-        bus_device* device = bus->devices[i];
+bool address_bus_add_device(address_bus* bus, bus_device* device) { abort(); }
 
-        if (address_intersects(range, block)) {
-            *device_out = device;
-            *range_out = range;
-            uint64_t block_offset = block - range.base;
-            return dispatch_lock_block(device, block_offset);
+void address_bus_finalize_mapping(address_bus* bus) {
+    for (uint64_t i = 0; i < bus->mappings_count; i++) {
+        bus_mapping* mapping = &bus->mappings[i];
+
+        if (mapping->is_memory) {
+            memory mem = {
+                .memory = mapping->device,
+                .base_address = mapping->base_address,
+                .size = mapping->size,
+            };
+            bus->mem[bus->mem_count++] = mem;
+        } else {
+            mmio mmio = {
+                .device = mapping->device,
+                .base_address = mapping->base_address,
+                .size = mapping->size,
+                .actual_size = mapping->actual_size,
+            };
+            bus->mmio[bus->mmio_count++] = mmio;
         }
     }
-    return NULL;
 }
 
-void addr_bus_unlock_block(address_bus* bus, uint64_t addr, bus_device* device,
-                           block_range range) {
-    uint64_t block = addr / BLOCK_SIZE;
-    uint64_t block_offset = block - range.base;
-    dispatch_unlock_block(device, block_offset);
+void address_bus_debug_print_mapping(address_bus* bus) {
+    printf("%llu devices:\n", bus->mappings_count);
+    for (uint64_t i = 0; i < bus->mappings_count; i++) {
+        uint64_t base = bus->mappings[i].base_address;
+        uint64_t end =
+            bus->mappings[i].base_address + bus->mappings[i].size - 1;
+
+        printf("%08llx %08llx (%llu %llu) ", base, end, base, end);
+        if (bus->mappings[i].is_memory) {
+            printf("M\n");
+        } else {
+            printf("D\n");
+        }
+    }
+}
+
+void address_bus_debug_print_finalized(address_bus* bus) {
+    if (bus->mem_count > 0) {
+        printf("Memory regions:\n");
+        for (uint64_t i = 0; i < bus->mem_count; i++) {
+            uint64_t base = bus->mem[i].base_address;
+            uint64_t end = bus->mem[i].base_address + bus->mem[i].size - 1;
+
+            printf("%08llx %08llx (%llu %llu)\n", base, end, base, end);
+        }
+    }
+
+    if (bus->mmio_count > 0) {
+        printf("\nMMIO regions:\n");
+        for (uint64_t i = 0; i < bus->mmio_count; i++) {
+            uint64_t base = bus->mmio[i].base_address;
+            uint64_t end = bus->mmio[i].base_address + bus->mmio[i].size - 1;
+
+            printf("%08llx %08llx (%llu %llu)\n", base, end, base, end);
+        }
+    }
 }
