@@ -186,12 +186,13 @@ void cpu_run(Cpu* cpu) {
         while (cpu->registers[IP_INDEX].r == block_start && !cpu->halt) {
             uint64_t i = 0;
             while (!cpu->halt && i < buf->len) {
-                cpu->clock_count++;
                 instruction* instr = &buf->instructions[i];
                 cpu->registers[IP_INDEX].r += instr->instruction_size;
                 cpu_execute(cpu, instr);
                 i++;
             }
+            cpu->clock_count += i;
+            // cpu->clock_count += i;
         }
     }
 }

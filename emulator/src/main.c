@@ -57,10 +57,8 @@ int main(void) {
 
     if(!address_bus_add_memory(&bus, 0, 1 * 1024 * 1024)) {
         printf("Failed to add memory!\n");
-    } else {
-        printf("Success!\n");
+        return 1;
     }
-
     address_bus_finalize_mapping(&bus);
 
     address_bus_debug_print_finalized(&bus);

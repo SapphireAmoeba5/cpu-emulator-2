@@ -24,7 +24,7 @@ inline static uint64_t addrmask(uint64_t size) { return ~(size - 1); }
 
 bool address_intersects(uint64_t a, uint64_t a_size, uint64_t b,
                         uint64_t b_size) {
-    return (a <= b && a + a_size >= b) || (b <= a && b + b_size >= a);
+    return (a <= b && a + a_size > b) || (b <= a && b + b_size > a);
 }
 
 inline static uint64_t align_next(uint64_t n, uint64_t alignment) {
@@ -150,7 +150,9 @@ bool address_bus_add_memory(address_bus* bus, uint64_t address, uint64_t size) {
         }
     }
 
-    return false;
+    bus->mappings[bus->mappings_count++] = mapping;
+
+    return true;
 }
 
 bool address_bus_add_device(address_bus* bus, bus_device* device) { abort(); }
