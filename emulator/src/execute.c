@@ -8,7 +8,7 @@
 #include <stdlib.h>
 #include <time.h>
 
-// #define LOOKUP_TABLE_IMPL
+#define LOOKUP_TABLE_IMPL
 
 
 static inline uint64_t do_add(Cpu* cpu, uint64_t left, uint64_t right) {
@@ -211,8 +211,10 @@ static void handle_invl(Cpu* cpu, instruction* instr, uint64_t src) {
 }
 
 static void handle_halt(Cpu* cpu, instruction* instr, uint64_t src) {
-    printf("CPU HALTED\n");
+    printf("HALT!\n");
     cpu->halt = true;
+    while(1) {
+    }
 }
 
 static void handle_int(Cpu* cpu, instruction* instr, uint64_t src) {

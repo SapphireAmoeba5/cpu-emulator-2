@@ -61,8 +61,6 @@ int main(void) {
     }
     address_bus_finalize_mapping(&bus);
 
-    address_bus_debug_print_finalized(&bus);
-
     uint64_t length;
     uint8_t* program = readFile("output.bin", &length);
 

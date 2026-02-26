@@ -373,8 +373,7 @@ error_t cpu_decode(Cpu* cpu, instruction* instr, bool* branch_point) {
     switch (opcode) {
     case EXT(0x1c):
         return NO_ERROR; // These instructions are just opcodes, nothing else to decode
-    // The interrupt instruction
-    case 0x01:
+    case 0x01: // The interrupt instruction
         instr->op_src = op_src_immediate;
         return fetch(cpu, (uint8_t*)&instr->immediate);
     case 0x00:

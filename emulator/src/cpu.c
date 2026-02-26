@@ -69,48 +69,48 @@ static void intpt(Cpu* cpu, int index) {
 }
 
 void cpu_write_8(Cpu* cpu, uint64_t data, uint64_t address) {
-    if(!address_bus_write_n(cpu->bus, address, &data, 8)) {
+    if (!address_bus_write_n(cpu->bus, address, &data, 8)) {
         cpu_except(cpu, BUS_ERROR);
     }
 }
 void cpu_write_4(Cpu* cpu, uint32_t data, uint64_t address) {
-    if(!address_bus_write_n(cpu->bus, address, &data, 4)) {
+    if (!address_bus_write_n(cpu->bus, address, &data, 4)) {
         cpu_except(cpu, BUS_ERROR);
     }
 }
 
 void cpu_write_2(Cpu* cpu, uint16_t data, uint64_t address) {
-    if(!address_bus_write_n(cpu->bus, address, &data, 2)) {
+    if (!address_bus_write_n(cpu->bus, address, &data, 2)) {
         cpu_except(cpu, BUS_ERROR);
     }
 }
 
 void cpu_write_1(Cpu* cpu, uint8_t data, uint64_t address) {
-    if(!address_bus_write_n(cpu->bus, address, &data, 1)) {
+    if (!address_bus_write_n(cpu->bus, address, &data, 1)) {
         cpu_except(cpu, BUS_ERROR);
     }
 }
 
 void cpu_read_8(Cpu* cpu, uint64_t address, uint64_t* value) {
-    if(!address_bus_read_n(cpu->bus, address, value, 8)) {
+    if (!address_bus_read_n(cpu->bus, address, value, 8)) {
         cpu_except(cpu, BUS_ERROR);
     }
 }
 
 void cpu_read_4(Cpu* cpu, uint64_t address, uint32_t* value) {
-    if(!address_bus_read_n(cpu->bus, address, value, 4)) {
+    if (!address_bus_read_n(cpu->bus, address, value, 4)) {
         cpu_except(cpu, BUS_ERROR);
     }
 }
 
 void cpu_read_2(Cpu* cpu, uint64_t address, uint16_t* value) {
-    if(!address_bus_read_n(cpu->bus, address, value, 2)) {
+    if (!address_bus_read_n(cpu->bus, address, value, 2)) {
         cpu_except(cpu, BUS_ERROR);
     }
 }
 
 void cpu_read_1(Cpu* cpu, uint64_t address, uint8_t* value) {
-    if(!address_bus_read_n(cpu->bus, address, value, 1)) {
+    if (!address_bus_read_n(cpu->bus, address, value, 1)) {
         cpu_except(cpu, BUS_ERROR);
     }
 }
@@ -167,8 +167,7 @@ void cpu_run(Cpu* cpu) {
                 error_t err = cpu_decode(cpu, &instr, &branches);
                 if (err != NO_ERROR) {
                     if (buf->len == 0) {
-                        printf("Cache error: %d\n", err);
-                        cpu->exit = true;
+                        cpu_except(cpu, DECODE_ERROR);
                     }
                     break;
                 }
@@ -183,16 +182,15 @@ void cpu_run(Cpu* cpu) {
         uint64_t block_start = cpu->registers[IP_INDEX].r;
         // Don't do a cache lookup while we are still executing the same block
         // of code
-        while (cpu->registers[IP_INDEX].r == block_start && !cpu->halt) {
+        while (cpu->registers[IP_INDEX].r == block_start) {
             uint64_t i = 0;
-            while (!cpu->halt && i < buf->len) {
+            while (i < buf->len) {
                 instruction* instr = &buf->instructions[i];
                 cpu->registers[IP_INDEX].r += instr->instruction_size;
                 cpu_execute(cpu, instr);
                 i++;
             }
             cpu->clock_count += i;
-            // cpu->clock_count += i;
         }
     }
 }
