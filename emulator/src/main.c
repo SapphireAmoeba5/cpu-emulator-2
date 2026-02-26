@@ -7,7 +7,6 @@
 #include "address_bus.h"
 #include "bus_device.h"
 #include "cpu.h"
-#include "devices/memory.h"
 #include "memory.h"
 #include "timer.h"
 
@@ -52,17 +51,27 @@ void* readFile(const char* path, uint64_t* length) {
 }
 
 int main(void) {
-    address_bus bus = {0};
-    addr_bus_init(&bus);
+    address_bus bus;
 
+    address_bus_init(&bus);
+
+    if(!address_bus_add_memory(&bus, 0, 1 * 1024 * 1024)) {
+        printf("Failed to add memory!\n");
+    } else {
+        printf("Success!\n");
+    }
+
+    address_bus_finalize_mapping(&bus);
+
+    address_bus_debug_print_finalized(&bus);
 
     uint64_t length;
     uint8_t* program = readFile("output.bin", &length);
 
-    memory* mem = memory_create(1024 * 1024 / BLOCK_SIZE);
-    memcpy(mem->data, program, length);
-
-    addr_bus_add_device(&bus, (bus_device*)mem);
+    if(!address_bus_write_n(&bus, 0, program, length)) {
+        printf("Failed to load program\n");
+        return 1;
+    }
 
     Cpu cpu;
     cpu_create(&cpu, &bus);
@@ -75,5 +84,5 @@ int main(void) {
 
     cpu_destroy(&cpu);
 
-    addr_bus_destroy(&bus);
+    // addr_bus_destroy(&bus);
 }

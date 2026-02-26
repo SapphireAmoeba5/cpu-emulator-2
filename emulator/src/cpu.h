@@ -1,6 +1,5 @@
 #pragma once
 
-#include "data_cache.h"
 #include "address_bus.h"
 #include "instruction_cache.h"
 #include "timer.h"
@@ -71,10 +70,6 @@ typedef struct Cpu {
 
     instruction_cache cache;
     timer timer;
-
-    cache instruction_cache;
-    cache data_cache;
-
 } Cpu;
 
 /// Longjumps to `interrupt_jmp` on exception

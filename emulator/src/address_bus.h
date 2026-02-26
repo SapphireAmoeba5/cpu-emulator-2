@@ -7,73 +7,93 @@
 
 struct Cpu;
 
-constexpr uint64_t BLOCK_SIZE = 64;
+constexpr uint64_t MAX_DEVICES = 32;
 
+constexpr uint64_t BLOCK_SIZE = 64;
 static_assert(BLOCK_SIZE >= 64);
 
 typedef struct {
     uint64_t base;
     uint64_t range;
-} block_range;
+} memory_region;
 
-inline static bool intersects(block_range left, block_range right) {
-    if (left.base <= right.base && left.base + left.range >= right.base ||
-        right.base <= left.base && right.base + right.range >= left.base) {
-        return true;
-    }
+typedef struct {
+    void* device;
 
-    return false;
-}
+    // Base address this mmio mapping is stored at. It must be aligned to `size`
+    uint64_t base_address;
+    // The size of the address range the device takes up on the bus
+    uint64_t size;
+    // The actual size that the device requested
+    uint64_t actual_size;
 
-//
-// typedef struct device_tree {
-//     addr_range range;
-//     struct device_tree* next;
-// }device_tree;
+    // If this is true then `device` is a pointer to a block of allocated
+    // memory directly read/writable with normal memory operation, otherwise
+    // `device` is a pointer to a bus_device
+    bool is_memory;
+} bus_mapping;
 
-constexpr size_t MAX_DEVICES = 30;
+typedef struct {
+    char* memory;
+    uint64_t base_address;
+    uint64_t size;
+} memory;
 
-typedef struct address_bus {
-    block_range ranges[MAX_DEVICES];
-    bus_device* devices[MAX_DEVICES];
-    size_t num_devices;
+typedef struct {
+    bus_device* device;
+    uint64_t base_address;
+    uint64_t size;
+    uint64_t actual_size;
+} mmio;
+
+typedef struct {
+    memory mem[MAX_DEVICES];
+    uint64_t mem_count;
+
+    mmio mmio[MAX_DEVICES];
+    uint64_t mmio_count;
+
+    bus_mapping mappings[MAX_DEVICES];
+    uint64_t mappings_count;
 } address_bus;
 
-void addr_bus_init(address_bus* bus);
-// Cleans up all resources owned by this address bus
-void addr_bus_destroy(address_bus* bus);
+// Initializes the address bus to a proper default state
+void address_bus_init(address_bus* bus);
 
-// Returns false if the device could not be added. No two addr_ranges may
-// intersect. If the device you attempt to add intersects with any other address
-// range this functin will fail and return false
-//
-// The address bus takes ownership over the device, it must be allocated on the
-// heap.
-//
-// If the function returns true then the caller can safely free the device
-bool addr_bus_add_device(address_bus* bus, bus_device* device);
-// Prints the state of the address bus to stdout
-void addr_bus_pretty_print(address_bus* bus);
-// Evaluates if this range intersects any devices already in the bus
-bool addr_bus_intersects(address_bus* bus, block_range range);
+bool address_bus_write_n(address_bus* bus, uint64_t address, void* src,
+                         uint64_t n);
+bool address_bus_read_n(address_bus* bus, uint64_t address, void* dst,
+                        uint64_t n);
 
-bool addr_bus_write_block(address_bus* bus, uint64_t addr, void* out);
-bool addr_bus_read_block(address_bus* bus, uint64_t addr, void* in);
-
-/// Long jumps to the Cpu's exception handler on bus error
-void addr_bus_write_block_except(address_bus* bus, struct Cpu* cpu, uint64_t addr, void* out);
-/// Long jumps to the Cpu's exception handler on bus error
-void addr_bus_read_block_except(address_bus* bus, struct Cpu* cpu, uint64_t addr, void* out);
-
-/// Locks the block at `addr` so no other threads can use it. Returns the
-/// pointer to the block and the device that owns the block.
+/// Insert at least `size` bytes of memory at `address` into the bus
 ///
-/// Returns NULL if `addr` isn't in a device range
-uint8_t* addr_bus_lock_block(address_bus* bus, uint64_t addr, bus_device** device_out, block_range* range_out);
-
-/// Unlocks the block at `addr` and lets other threads access it
+/// `size` will be rounded to the next power of two that is equal or greater
+/// than `size` `address` will be rounded down to the next address that is less
+/// than or equal to `address`
 ///
-/// This function must be preceded by addr_bus_lock_block, and you must pass in
-/// the same addrses in both functions and pass the same device that was
-/// returned from addr_bus_lock_block
-void addr_bus_unlock_block(address_bus* bus, uint64_t addr, bus_device* device, block_range range);
+/// Returns:
+/// If the memory was successfully added into the bus, returns true.
+/// If the memory was not able to be added it will return false
+/// This function will fail to add the memory if there are `MAX_DEVICES`
+/// devices, if `size` will overflow when rounded to the next power of two,
+/// and if the address range of the memory overlaps any other range.
+bool address_bus_add_memory(address_bus* bus, uint64_t address, uint64_t size);
+
+/// Returns:
+/// If the device was successfully added, returns true.
+/// If the device was unable to be added, returns false.
+/// The function will fail for reasons such as but not exclusive to; if there
+/// are `MAX_DEVICES` devices
+bool address_bus_add_device(address_bus* bus, bus_device* device);
+
+// Finalizes the mappings into an internal structure for fast access
+// Everytime you add any devices this function must be called before they can be
+// accessed
+//
+// WARNING:
+// This function is not thread safe because it will modify the same data
+// structure that bus accesses use without synchronization
+void address_bus_finalize_mapping(address_bus* bus);
+
+void address_bus_debug_print_mapping(address_bus* bus);
+void address_bus_debug_print_finalized(address_bus* bus);
