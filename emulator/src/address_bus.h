@@ -4,6 +4,7 @@
 #include <stdint.h>
 
 #include "bus_device.h"
+#include "free_list.h"
 
 struct Cpu;
 
@@ -55,6 +56,9 @@ typedef struct {
 
     bus_mapping mappings[MAX_DEVICES];
     uint64_t mappings_count;
+
+    
+    free_list list;
 } address_bus;
 
 // Initializes the address bus to a proper default state
@@ -65,11 +69,10 @@ bool address_bus_write_n(address_bus* bus, uint64_t address, void* src,
 bool address_bus_read_n(address_bus* bus, uint64_t address, void* dst,
                         uint64_t n);
 
-/// Insert at least `size` bytes of memory at `address` into the bus
+/// Insert at least `size` bytes of memory into the bus
 ///
 /// `size` will be rounded to the next power of two that is equal or greater
-/// than `size` `address` will be rounded down to the next address that is less
-/// than or equal to `address`
+/// than `size`.
 ///
 /// Returns:
 /// If the memory was successfully added into the bus, returns true.
@@ -77,7 +80,7 @@ bool address_bus_read_n(address_bus* bus, uint64_t address, void* dst,
 /// This function will fail to add the memory if there are `MAX_DEVICES`
 /// devices, if `size` will overflow when rounded to the next power of two,
 /// and if the address range of the memory overlaps any other range.
-bool address_bus_add_memory(address_bus* bus, uint64_t address, uint64_t size);
+bool address_bus_add_memory(address_bus* bus, uint64_t size);
 
 /// Returns:
 /// If the device was successfully added, returns true.

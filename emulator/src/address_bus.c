@@ -1,4 +1,6 @@
 #include "address_bus.h"
+#include "free_list.h"
+#include "util/align.h"
 #include <assert.h>
 #include <stdint.h>
 #include <stdio.h>
@@ -27,17 +29,10 @@ bool address_intersects(uint64_t a, uint64_t a_size, uint64_t b,
     return (a <= b && a + a_size > b) || (b <= a && b + b_size > a);
 }
 
-inline static uint64_t align_next(uint64_t n, uint64_t alignment) {
-    return (n + alignment - 1) / alignment * alignment;
+void address_bus_init(address_bus* bus) {
+    memset(bus, 0, sizeof(*bus));
+    freelist_init(&bus->list);
 }
-
-/// Aligns `n` to the previous alignment that is aligned by `alignment`
-/// If `n` is already aligned then this function returns `n`
-inline static uint64_t align_prev(uint64_t n, uint64_t alignment) {
-    return n - (n % alignment);
-}
-
-void address_bus_init(address_bus* bus) { memset(bus, 0, sizeof(*bus)); }
 
 bool address_bus_write_n(address_bus* bus, uint64_t address, void* src,
                          uint64_t n) {
@@ -81,7 +76,7 @@ bool address_bus_read_n(address_bus* bus, uint64_t address, void* dst,
     return false;
 }
 
-bool address_bus_add_memory(address_bus* bus, uint64_t address, uint64_t size) {
+bool address_bus_add_memory(address_bus* bus, uint64_t size) {
     // There is no power of two greater than this representable in an 8 byte
     // integer
     if (size > 0x8000000000000000) {
@@ -100,7 +95,13 @@ bool address_bus_add_memory(address_bus* bus, uint64_t address, uint64_t size) {
 
     size = next_p2(size);
 
-    uint64_t base_address = align_prev(address, size);
+    bool success = false;
+    uint64_t base_address = freelist_allocate(&bus->list, size, size, &success);
+
+    if (!success) {
+        return false;
+    }
+
     char* block = malloc(size);
 
     bus_mapping mapping = {
@@ -155,7 +156,7 @@ bool address_bus_add_memory(address_bus* bus, uint64_t address, uint64_t size) {
     return true;
 }
 
-bool address_bus_add_device(address_bus* bus, bus_device* device) { abort(); }
+bool address_bus_add_device(address_bus* bus, bus_device* device) {return false;}
 
 void address_bus_finalize_mapping(address_bus* bus) {
     for (uint64_t i = 0; i < bus->mappings_count; i++) {

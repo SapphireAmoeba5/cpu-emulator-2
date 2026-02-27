@@ -1,14 +1,15 @@
+#include "address_bus.h"
+#include "bus_device.h"
+#include "cpu.h"
+#include "free_list.h"
+#include "memory.h"
+#include "timer.h"
 #include <errno.h>
 #include <stdatomic.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <time.h>
-#include "address_bus.h"
-#include "bus_device.h"
-#include "cpu.h"
-#include "memory.h"
-#include "timer.h"
 
 /// Reads the file at PATH, and returns an allocated bufer and writes the length
 /// of the buffer to the pointer referenced by `length`
@@ -55,16 +56,18 @@ int main(void) {
 
     address_bus_init(&bus);
 
-    if(!address_bus_add_memory(&bus, 0, 1 * 1024 * 1024)) {
+    if (!address_bus_add_memory(&bus, 1 * 1024 * 1024)) {
         printf("Failed to add memory!\n");
         return 1;
     }
     address_bus_finalize_mapping(&bus);
 
+    address_bus_debug_print_finalized(&bus);
+
     uint64_t length;
     uint8_t* program = readFile("output.bin", &length);
 
-    if(!address_bus_write_n(&bus, 0, program, length)) {
+    if (!address_bus_write_n(&bus, 0, program, length)) {
         printf("Failed to load program\n");
         return 1;
     }

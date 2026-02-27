@@ -31,6 +31,7 @@ add_executable(${PROJECT_NAME}
     src/block.c
     src/address_bus.c
     src/bus_device.c
+    src/free_list.c
     src/sync/spinlock.c
     thirdparty/xxhash/xxhash.c
 )
