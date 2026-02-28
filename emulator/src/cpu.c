@@ -27,6 +27,8 @@ static void intpt(Cpu* cpu, int index) {
         printf("ip: %llu\nsp: %llu\n", cpu->registers[IP_INDEX].r,
                cpu->registers[SP_INDEX].r);
 
+        printf("IDR: %016llx (%llu)\n", cpu->idr, cpu->idr);
+
         printf("ZF | CF | OF | SF\n");
 
         if (cpu->flags & FLAG_ZERO) {

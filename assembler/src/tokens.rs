@@ -568,6 +568,8 @@ impl<'a> TokenIter<'a> {
 
             "sysinfo" => Some(Mnemonic::Sysinfo),
 
+            "ldit" => Some(Mnemonic::Ldit),
+
             "int" => Some(Mnemonic::Int),
             _ => None,
         }

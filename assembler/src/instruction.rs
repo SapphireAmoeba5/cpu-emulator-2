@@ -222,5 +222,7 @@ pub enum Mnemonic {
 
     Sysinfo,
 
+    Ldit,
+
     Int,
 }

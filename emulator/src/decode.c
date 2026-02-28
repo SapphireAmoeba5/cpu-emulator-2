@@ -28,7 +28,7 @@ typedef enum {
 
 // On error returns `MEMORY_ERROR` otherwise returns `NO_ERROR`
 inline static error_t fetch(Cpu* cpu, uint8_t* byte) {
-    if(!address_bus_read_n(cpu->bus, cpu->registers[IP_INDEX].r, byte, 1)) {
+    if (!address_bus_read_n(cpu->bus, cpu->registers[IP_INDEX].r, byte, 1)) {
         return BUS_ERROR;
     }
     cpu->registers[IP_INDEX].r += 1;
@@ -36,7 +36,7 @@ inline static error_t fetch(Cpu* cpu, uint8_t* byte) {
 }
 
 inline static error_t fetch_2(Cpu* cpu, uint16_t* out) {
-    if(!address_bus_read_n(cpu->bus, cpu->registers[IP_INDEX].r, out, 2)) {
+    if (!address_bus_read_n(cpu->bus, cpu->registers[IP_INDEX].r, out, 2)) {
         return BUS_ERROR;
     }
     cpu->registers[IP_INDEX].r += 2;
@@ -44,7 +44,7 @@ inline static error_t fetch_2(Cpu* cpu, uint16_t* out) {
 }
 
 inline static error_t fetch_4(Cpu* cpu, uint32_t* out) {
-    if(!address_bus_read_n(cpu->bus, cpu->registers[IP_INDEX].r, out, 4)) {
+    if (!address_bus_read_n(cpu->bus, cpu->registers[IP_INDEX].r, out, 4)) {
         return BUS_ERROR;
     }
     cpu->registers[IP_INDEX].r += 4;
@@ -52,7 +52,7 @@ inline static error_t fetch_4(Cpu* cpu, uint32_t* out) {
 }
 
 inline static error_t fetch_8(Cpu* cpu, uint64_t* out) {
-    if(!address_bus_read_n(cpu->bus, cpu->registers[IP_INDEX].r, out, 8)) {
+    if (!address_bus_read_n(cpu->bus, cpu->registers[IP_INDEX].r, out, 8)) {
         return BUS_ERROR;
     }
     cpu->registers[IP_INDEX].r += 8;
@@ -96,7 +96,7 @@ iop ext_ops[] =
     /* 0xa0 */ op_invl, op_invl, op_invl, op_invl, op_invl, op_invl, op_invl, op_invl, op_invl, op_invl, op_invl, op_invl, op_invl, op_invl, op_invl, op_invl,
     /* 0xb0 */ op_invl, op_invl, op_invl, op_invl, op_invl, op_invl, op_invl, op_invl, op_invl, op_invl, op_invl, op_invl, op_invl, op_invl, op_invl, op_invl,
     /* 0xc0 */ op_invl, op_invl, op_invl, op_invl, op_invl, op_invl, op_invl, op_invl, op_invl, op_invl, op_invl, op_invl, op_invl, op_invl, op_invl, op_invl,
-    /* 0xd0 */ op_invl, op_invl, op_invl, op_invl, op_invl, op_invl, op_invl, op_invl, op_invl, op_invl, op_invl, op_invl, op_invl, op_invl, op_invl, op_invl,
+    /* 0xd0 */ op_mov, op_mov, op_mov, op_mov, op_mov, op_mov, op_mov, op_mov, op_mov, op_mov, op_mov, op_mov, op_mov, op_mov, op_mov, op_mov,
     /* 0xe0 */ op_mov, op_mov, op_mov, op_mov, op_mov, op_mov, op_mov, op_mov, op_mov, op_mov, op_mov, op_mov, op_mov, op_mov, op_mov, op_mov,
     /* 0xf0 */ op_mov, op_mov, op_mov, op_mov, op_mov, op_mov, op_mov, op_mov, op_mov, op_mov, op_mov, op_mov, op_mov, op_mov, op_mov, op_mov,
 };
@@ -330,7 +330,8 @@ error_t cpu_decode(Cpu* cpu, instruction* instr, bool* branch_point) {
     }
 
     // PUSH and POP instruction respecively
-    if ((opcode >= 0xd0 && opcode <= 0xdf) || (opcode >= 0xe0 && opcode <= 0xef)) {
+    if ((opcode >= 0xd0 && opcode <= 0xdf) ||
+        (opcode >= 0xe0 && opcode <= 0xef)) {
         uint8_t reg_id = opcode & 0x0f;
         instr->dest = &cpu->registers[reg_id].r;
         return NO_ERROR;
@@ -372,8 +373,9 @@ error_t cpu_decode(Cpu* cpu, instruction* instr, bool* branch_point) {
 
     switch (opcode) {
     case EXT(0x1c):
-        return NO_ERROR; // These instructions are just opcodes, nothing else to decode
-    case 0x01: // The interrupt instruction
+        return NO_ERROR; // These instructions are just opcodes, nothing else to
+                         // decode
+    case 0x01:           // The interrupt instruction
         instr->op_src = op_src_immediate;
         return fetch(cpu, (uint8_t*)&instr->immediate);
     case 0x00:
@@ -481,6 +483,29 @@ error_t cpu_decode(Cpu* cpu, instruction* instr, bool* branch_point) {
     case 0x08:
         instr->op_src = op_src_calculate_address;
         return decode_mem_operand(cpu, instr);
+
+    // LDIT (Load interrupt table) INSTRUCTION
+    case EXT(0xd0):
+    case EXT(0xd1):
+    case EXT(0xd2):
+    case EXT(0xd3):
+    case EXT(0xd4):
+    case EXT(0xd5):
+    case EXT(0xd6):
+    case EXT(0xd7):
+    case EXT(0xd8):
+    case EXT(0xd9):
+    case EXT(0xda):
+    case EXT(0xdb):
+    case EXT(0xdc):
+    case EXT(0xdd):
+    case EXT(0xde):
+    case EXT(0xdf):
+        instr->op_src = op_src_dereference_reg;
+        uint8_t reg = opcode & 0x0f;
+        instr->src = &cpu->registers[reg].r;
+        instr->dest = &cpu->idr;
+        return NO_ERROR;
 
     default:
         return DECODE_ERROR;

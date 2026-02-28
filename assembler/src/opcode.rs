@@ -116,6 +116,7 @@ bitflags! {
 
         const JMP = bit!(11);
 
+        // This flag means the register operand is encoded in the lower 4 bits of the opcode
         const OPCODE_REG = bit!(12);
     }
 }
@@ -915,6 +916,9 @@ static ENCODING_TABLE: LazyLock<[Vec<InstEncoding>; Mnemonic::COUNT]> = LazyLock
             InstEncoding::new(0x1c, true, EncodingFlags::empty(), [OperandFlags::empty(), OperandFlags::empty(), OperandFlags::empty()]),
         ]),
 
+        (Mnemonic::Ldit, vec![
+            InstEncoding::new(0xd0, true, encoding!(OPCODE_REG), [OperandFlags::GP_REG, OperandFlags::empty(), OperandFlags::empty()]),
+        ]),
 
         (Mnemonic::Int, vec![
             InstEncoding::new(0x01, false, encoding!(SYS_CONTROL), [OperandFlags::IMM8, OperandFlags::empty(), OperandFlags::empty()]),

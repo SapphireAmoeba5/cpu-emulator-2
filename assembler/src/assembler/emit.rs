@@ -215,6 +215,7 @@ pub fn calculate_disp32_offset(pc: u64, addr: u64) -> Result<i32> {
         .context("Displacement is too large to fit in 4 bytes")
 }
 
+
 impl Assembler {
     fn get_section(&mut self) -> &mut Section {
         self.get_section_mut().unwrap()
