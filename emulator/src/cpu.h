@@ -8,6 +8,8 @@
 #include <stdbool.h>
 #include <stdint.h>
 
+#include "util/common.h"
+
 #ifdef __APPLE__
 // On MacOS, the normal setjmp/longjmp have the overhead of saving and
 // reloading the signal mask every time they are called. We don't need to
@@ -33,7 +35,6 @@ constexpr uint64_t MAX_CACHE_BLOCK = 32;
 
 constexpr uint64_t CLOCK_HZ = 500000000;
 
-#define BIT(n) 1 << (n)
 
 typedef enum {
     NO_ERROR = -1,

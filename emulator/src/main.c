@@ -1,4 +1,5 @@
 #include "address_bus.h"
+#include "device/test_device.h"
 #include "bus_device.h"
 #include "cpu.h"
 #include "free_list.h"
@@ -60,9 +61,16 @@ int main(void) {
         printf("Failed to add memory!\n");
         return 1;
     }
-    address_bus_finalize_mapping(&bus);
 
-    address_bus_debug_print_finalized(&bus);
+    test_device* td = malloc(sizeof(*td));
+    test_device_init(td, 65);
+
+    if(!address_bus_add_device(&bus, (bus_device*)td)) {
+        printf("Failed to add device!\n");
+        return 1;
+    }
+
+    address_bus_finalize_mapping(&bus);
 
     uint64_t length;
     uint8_t* program = readFile("output.bin", &length);

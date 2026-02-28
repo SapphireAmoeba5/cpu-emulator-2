@@ -20,7 +20,6 @@ uint64_t freelist_allocate(free_list* list, uint64_t size, uint64_t align,
         // `size_free` will underflow if `address` rounds to to an address beyond
         // `list->base + list->size`
         if (list->size >= size && size_free >= size) {
-            printf("Allocated at address: %llx\n", address);
             *success = true;
 
             if (list->base == address) {
