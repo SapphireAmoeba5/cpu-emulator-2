@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.21.3 FATAL_ERROR)
+cmake_minimum_required(VERSION 4.2 FATAL_ERROR)
 project(emulator)
 
 set(CMAKE_C_STANDARD 23)
@@ -6,8 +6,10 @@ set(CMAKE_C_STANDARD_REQUIRED ON)
 
 set(CMAKE_EXPORT_COMPILE_COMMANDS TRUE)
 
+option(SANITIZE "Enable sanitizers to detect undefined behavior" OFF)
+
 if(MSVC)
-    message(FATAL_ERROR "MSVC not supported")
+    message(FATAL_ERROR "MSVC not currently supported")
 endif()
 
 
@@ -36,6 +38,11 @@ add_executable(${PROJECT_NAME}
     src/sync/spinlock.c
     thirdparty/xxhash/xxhash.c
 )
+
+if(SANITIZE)
+    target_compile_options(${PROJECT_NAME} PUBLIC -fsanitize=address,undefined)
+    target_link_options(${PROJECT_NAME} PUBLIC -fsanitize=address,undefined)
+endif()
 
 
 target_include_directories(${PROJECT_NAME} PUBLIC
