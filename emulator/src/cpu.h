@@ -68,7 +68,7 @@ typedef struct Cpu {
     // pointer
     reg registers[16 + 2];
     // Interrupt descriptor register
-    uint64_t idr;
+    uint64_t idtr;
 
     // Jumps to the exception handler code when there is any exception
     jmp_buf interrupt_jmp;

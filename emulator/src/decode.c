@@ -2,6 +2,7 @@
 #include "address_bus.h"
 #include "cpu.h"
 #include "instruction.h"
+#include "util/types.h"
 #include <assert.h>
 #include <stdint.h>
 #include <stdio.h>
@@ -62,7 +63,7 @@ inline static error_t fetch_8(Cpu* cpu, uint64_t* out) {
 // clang-format off
 iop ops[] = 
 {
-    /* 0x00 */ op_halt, op_int, op_ret, op_invl, op_invl, op_mov, op_mov, op_mov, op_str, op_mov, op_invl, op_invl, op_invl, op_invl, op_invl, op_invl,
+    /* 0x00 */ op_halt, op_int, op_ret, op_invl, op_invl, op_mov, op_mov, op_mov, op_str, op_mov, op_mov, op_invl, op_invl, op_invl, op_invl, op_invl,
     /* 0x10 */ op_mov, op_mov, op_mov, op_mov, op_mov, op_mov, op_mov, op_mov, op_mov, op_mov, op_mov, op_mov, op_mov, op_mov, op_mov, op_call,
     /* 0x20 */ op_mov, op_add, op_sub, op_mul, op_div, op_idiv, op_and, op_or, op_xor, op_cmp, op_test, op_invl, op_invl, op_invl, op_invl, op_invl,
     /* 0x30 */ op_mov, op_add, op_sub, op_mul, op_div, op_idiv, op_and, op_or, op_xor, op_cmp, op_test, op_invl, op_invl, op_invl, op_invl, op_invl,
@@ -142,9 +143,18 @@ condition ext_conditions[] = {
 
 // clang-format on
 
-/// Same as `get_op` but implemented with a lookup table
-static inline iop get_op2(uint8_t opcode) { return ops[opcode]; }
-
+error_t get_special_register_pointer_from_id(Cpu* cpu, u64** out, u8 id) {
+    switch (id) {
+    case 0:
+        *out = &cpu->registers[SP_INDEX].r;
+        return NO_ERROR;
+    case 1:
+        *out = &cpu->idtr;
+        return NO_ERROR;
+    default:
+        return DECODE_ERROR;
+    }
+}
 inline static error_t decode_reg_operand(Cpu* cpu, instruction* instr) {
     uint8_t transfer_byte;
     if (fetch(cpu, &transfer_byte) != NO_ERROR) {
@@ -280,16 +290,25 @@ inline static error_t decode_pc_rel(Cpu* cpu, instruction* instr) {
     return NO_ERROR;
 }
 
-inline static error_t decode_mem_operand(Cpu* cpu, instruction* instr) {
+// Decodes a data transfer instruction with a memory operand
+// Params:
+// `cpu` the corrosponding CPU this instruction is being decoded for
+// `instr` the instruction to decode into
+// `dest_id` the register destination id. This is because certain mem oeprand
+// instructions use the same destination id but with a different opcode in order
+// to allow writing to special registers. This let's the calling function
+// manually figure out which destination register to assign
+inline static error_t decode_mem_operand(Cpu* cpu, instruction* instr,
+                                         u8* dest_id) {
     uint8_t byte;
     if (fetch(cpu, &byte) != NO_ERROR) {
         return BUS_ERROR;
     }
     int dest = (byte >> 4) & 0x0f;
+    *dest_id = dest;
     addr_mode mode = (byte >> 2) & 0x03;
     int size = byte & 0x03;
     instr->size = size;
-    instr->dest = &cpu->registers[dest].r;
 
     switch (mode) {
     case PCRel:
@@ -352,22 +371,6 @@ error_t cpu_decode(Cpu* cpu, instruction* instr, bool* branch_point) {
         instr->op_src = op_src_immediate;
         uint8_t reg_id = opcode & 0x0f;
         instr->dest = &cpu->registers[reg_id].r;
-        return NO_ERROR;
-    }
-    // RDSP (load stack pointer) instruction
-    else if (opcode >= EXT(0xf0) && opcode <= EXT(0xff)) {
-        uint8_t reg_id = opcode & 0x0f;
-        instr->op_src = op_src_dereference_reg;
-        instr->src = &cpu->registers[SP_INDEX].r;
-        instr->dest = &cpu->registers[reg_id].r;
-        return NO_ERROR;
-    }
-    // STSP (store stack pointer) instruction
-    else if (opcode >= EXT(0xe0) && opcode <= EXT(0xef)) {
-        uint8_t reg_id = opcode & 0x0f;
-        instr->op_src = op_src_dereference_reg;
-        instr->src = &cpu->registers[reg_id].r;
-        instr->dest = &cpu->registers[SP_INDEX].r;
         return NO_ERROR;
     }
 
@@ -474,38 +477,40 @@ error_t cpu_decode(Cpu* cpu, instruction* instr, bool* branch_point) {
     case EXT(0x18):
     case EXT(0x19):
     case EXT(0x1a):
-    case EXT(0x1b):
+    case EXT(0x1b): {
+        u8 dest_id;
         instr->op_src = op_src_dereference_mem;
-        return decode_mem_operand(cpu, instr);
+        error_t result = decode_mem_operand(cpu, instr, &dest_id);
+        instr->dest = &cpu->registers[dest_id].r;
+        return result;
+    }
 
     // STR and LEA instructions
+    // The STR instruction has a special op_str operation that gets assigned
+    // automatically through the operation table, and op_str tells the execute
+    // to write *instr->dest to the memory address as opposed to being the other
+    // way around
     case 0x09:
-    case 0x08:
+    case 0x08: {
+        u8 dest_id;
         instr->op_src = op_src_calculate_address;
-        return decode_mem_operand(cpu, instr);
-
-    // LDIT (Load interrupt table) INSTRUCTION
-    case EXT(0xd0):
-    case EXT(0xd1):
-    case EXT(0xd2):
-    case EXT(0xd3):
-    case EXT(0xd4):
-    case EXT(0xd5):
-    case EXT(0xd6):
-    case EXT(0xd7):
-    case EXT(0xd8):
-    case EXT(0xd9):
-    case EXT(0xda):
-    case EXT(0xdb):
-    case EXT(0xdc):
-    case EXT(0xdd):
-    case EXT(0xde):
-    case EXT(0xdf):
-        instr->op_src = op_src_dereference_reg;
-        uint8_t reg = opcode & 0x0f;
-        instr->src = &cpu->registers[reg].r;
-        instr->dest = &cpu->idr;
-        return NO_ERROR;
+        error_t result = decode_mem_operand(cpu, instr, &dest_id);
+        instr->dest = &cpu->registers[dest_id].r;
+        return result;
+    }
+    // LEA to a special register
+    case 0x0a: {
+        u8 dest_id;
+        instr->op_src = op_src_calculate_address;
+        error_t result = decode_mem_operand(cpu, instr, &dest_id);
+        error_t result2 =
+            get_special_register_pointer_from_id(cpu, &instr->dest, dest_id);
+        if (result != NO_ERROR && result2 != NO_ERROR) {
+            return DECODE_ERROR;
+        } else {
+            return NO_ERROR;
+        }
+    }
 
     default:
         return DECODE_ERROR;

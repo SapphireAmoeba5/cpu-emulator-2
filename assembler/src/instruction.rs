@@ -217,9 +217,6 @@ pub enum Mnemonic {
 
     Rdt,
 
-    Rdsp,
-    Stsp,
-
     Sysinfo,
 
     Ldit,

@@ -54,12 +54,17 @@ macro_rules! operand {
 bitflags! {
     #[derive(Debug, Hash, Clone, Copy)]
     pub struct OperandFlags: u32 {
-        const GP_REG = bit!(0);
-        const REG = bit!(1);
-        const IMM8 = bit!(2);
-        const IMM16 = bit!(3);
-        const IMM32 = bit!(4);
-        const IMM64 = bit!(5);
+        const SP = bit!(0);
+        const GP_REG = bit!(1);
+        // Any register
+        const REG = bit!(2);
+
+        // Any generic special register
+        const SPECIAL_REG = bit!(3);
+        const IMM8 = bit!(4);
+        const IMM16 = bit!(5);
+        const IMM32 = bit!(6);
+        const IMM64 = bit!(7);
         /// An immediate value
         const IMM = flags!(IMM8 | IMM16 | IMM32 | IMM64);
 
@@ -253,6 +258,11 @@ static ENCODING_TABLE: LazyLock<[Vec<InstEncoding>; Mnemonic::COUNT]> = LazyLock
         (Mnemonic::Lea, vec![
             InstEncoding::new(0x09, false, encoding!(DATA_TRANSFER | MEM64), [OperandFlags::GP_REG, OperandFlags::ADDR64, OperandFlags::empty()]),
             InstEncoding::new(0x09, false, encoding!(DATA_TRANSFER | MEM64), [OperandFlags::GP_REG, OperandFlags::DISP32 | OperandFlags::INDEX, OperandFlags::empty()]),
+
+
+            // Lea opcodes for special instructions
+            InstEncoding::new(0x0a, false, encoding!(DATA_TRANSFER | MEM64), [OperandFlags::SPECIAL_REG, OperandFlags::ADDR64, OperandFlags::empty()]),
+            InstEncoding::new(0x0a, false, encoding!(DATA_TRANSFER | MEM64), [OperandFlags::SPECIAL_REG, OperandFlags::DISP32 | OperandFlags::INDEX, OperandFlags::empty()]),
         ]),
 
         (Mnemonic::Add, vec![
@@ -902,14 +912,6 @@ static ENCODING_TABLE: LazyLock<[Vec<InstEncoding>; Mnemonic::COUNT]> = LazyLock
 
         (Mnemonic::Rdt, vec![
             InstEncoding::new(0xf0, false, encoding!(OPCODE_REG), [OperandFlags::GP_REG, OperandFlags::empty(), OperandFlags::empty()]),
-        ]),
-
-        (Mnemonic::Rdsp, vec![
-            InstEncoding::new(0xf0, true, encoding!(OPCODE_REG), [OperandFlags::GP_REG, OperandFlags::empty(), OperandFlags::empty()]),
-        ]),
-
-        (Mnemonic::Stsp, vec![
-            InstEncoding::new(0xe0, true, encoding!(OPCODE_REG), [OperandFlags::GP_REG, OperandFlags::empty(), OperandFlags::empty()]),
         ]),
 
         (Mnemonic::Sysinfo, vec![

@@ -30,10 +30,8 @@ use anyhow::{Context, Result};
 fn get_operand_from_expr_result(result: ExprResult) -> (Operand, OperandFlags) {
     match result.type_ {
         ExprType::Register => {
-            let mut operand = operand!(REG);
-            if result.register.is_gp() {
-                operand |= operand!(GP_REG);
-            }
+            let mut operand = result.register.get_operand_flag();
+
             (Operand::Register(result.register), operand)
         }
         ExprType::Constant => {

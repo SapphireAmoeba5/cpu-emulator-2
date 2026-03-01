@@ -62,10 +62,13 @@ impl Into<&'static str> for Register {
 impl Register {
     /// The number of indices starting from 0 up to and including `NUM_GP_REGISTERS - 1`
     const NUM_GP_REGISTERS: u8 = 16;
-    /// The index used to specify that the register is the stack pointer
-    const SP_INDEX: u8 = 255;
+    /// The index used to specify that the register is the stack pointer. Lower 4 bits is how it is
+    /// encoded in the lea instruction
+    const SP_INDEX: u8 = 0x10;
+    const IDTR_INDEX: u8 = 0x11;
+
     /// The index used to specify that the register is the instruction pointer
-    const IP_INDEX: u8 = 127;
+    const IP_INDEX: u8 = 0xff;
     /// A register value that is used to mean there is no register
     const INVALID_INDEX: u8 = 254;
     pub const INVALID_REGISTER: Register = Register(Self::INVALID_INDEX);
@@ -90,6 +93,13 @@ impl Register {
     pub fn is_invalid(&self) -> bool {
         !self.is_valid()
     }
+
+    pub fn is_special(&self) -> bool {
+        return self.0 >= Self::NUM_GP_REGISTERS
+            && self.0 != Self::INVALID_INDEX
+            && self.0 != Self::IP_INDEX;
+    }
+
     // Constructs a new general purpose register (r0 -> r15)
     pub fn new_gp(index: u8) -> Self {
         assert!(index < Self::NUM_GP_REGISTERS);
@@ -105,6 +115,10 @@ impl Register {
         Self(Self::IP_INDEX)
     }
 
+    pub fn new_idtr() -> Self {
+        Self(Self::IDTR_INDEX)
+    }
+
     pub fn none() -> Self {
         Self::INVALID_REGISTER
     }
@@ -113,12 +127,25 @@ impl Register {
         if self.is_gp() { Some(self.0) } else { None }
     }
 
+    /// Gets the encoding index for the register.
+    /// Panics if the register is the instruction pointer or is invalid.
+    pub fn get_encoding(&self) -> u8 {
+        assert!(self.is_valid() && !self.is_ip());
+
+        // The encoding index is encoding in the low 4 bits
+        self.0 & 0x0f
+    }
+
     /// Returns the register type as OperandFlags
     pub fn get_operand_flag(&self) -> OperandFlags {
         let mut flags = OperandFlags::REG;
 
         if self.is_gp() {
             flags |= OperandFlags::GP_REG;
+        } else if self.is_sp() {
+            flags |= OperandFlags::SP | OperandFlags::SPECIAL_REG;
+        } else if self.is_special() {
+            flags |= OperandFlags::SPECIAL_REG;
         }
 
         flags
@@ -481,17 +508,28 @@ impl<'a> TokenIter<'a> {
             "cmovnz.u64" | "cmovne.u64" => Some(Mnemonic::CmovnzU64),
 
             "cmovc" | "cmovb" | "cmovnae" => Some(Mnemonic::Cmovc),
-            "cmovc.u8" | "cmovc.b" | "cmovb.u8" | "cmovb.b" | "cmovnae.u8" | "cmovnae.b" => Some(Mnemonic::CmovcU8),
-            "cmovc.u16" | "cmovc.q" | "cmovb.u16" | "cmovb.q" | "cmovnae.u16" | "cmovnae.q" => Some(Mnemonic::CmovcU16),
-            "cmovc.u32" | "cmovc.h" | "cmovb.u32" | "cmovb.h" | "cmovnae.u32" | "cmovnae.h" => Some(Mnemonic::CmovcU32),
+            "cmovc.u8" | "cmovc.b" | "cmovb.u8" | "cmovb.b" | "cmovnae.u8" | "cmovnae.b" => {
+                Some(Mnemonic::CmovcU8)
+            }
+            "cmovc.u16" | "cmovc.q" | "cmovb.u16" | "cmovb.q" | "cmovnae.u16" | "cmovnae.q" => {
+                Some(Mnemonic::CmovcU16)
+            }
+            "cmovc.u32" | "cmovc.h" | "cmovb.u32" | "cmovb.h" | "cmovnae.u32" | "cmovnae.h" => {
+                Some(Mnemonic::CmovcU32)
+            }
             "cmovc.u64" | "cmovb.u64" | "cmovnae.u64" => Some(Mnemonic::CmovcU64),
 
             "cmovnc" | "cmovae" | "cmovnb" => Some(Mnemonic::Cmovnc),
-            "cmovnc.u8" | "cmovnc.b" | "cmovae.u8" | "cmovae.b" | "cmovnb.u8" | "cmovnb.b" => Some(Mnemonic::CmovncU8),
-            "cmovnc.u16" | "cmovnc.q" | "cmovae.u16" | "cmovae.q" | "cmovnb.u16" | "cmovnb.q" => Some(Mnemonic::CmovncU16),
-            "cmovnc.u32" | "cmovnc.h" | "cmovae.u32" | "cmovae.h" | "cmovnb.u32" | "cmovnb.h" => Some(Mnemonic::CmovncU32),
+            "cmovnc.u8" | "cmovnc.b" | "cmovae.u8" | "cmovae.b" | "cmovnb.u8" | "cmovnb.b" => {
+                Some(Mnemonic::CmovncU8)
+            }
+            "cmovnc.u16" | "cmovnc.q" | "cmovae.u16" | "cmovae.q" | "cmovnb.u16" | "cmovnb.q" => {
+                Some(Mnemonic::CmovncU16)
+            }
+            "cmovnc.u32" | "cmovnc.h" | "cmovae.u32" | "cmovae.h" | "cmovnb.u32" | "cmovnb.h" => {
+                Some(Mnemonic::CmovncU32)
+            }
             "cmovnc.u64" | "cmovae.u64" | "cmovnb.u64" => Some(Mnemonic::CmovncU64),
-
 
             "cmovo" => Some(Mnemonic::Cmovo),
             "cmovo.u8" | "cmovo.b" => Some(Mnemonic::CmovoU8),
@@ -505,7 +543,6 @@ impl<'a> TokenIter<'a> {
             "cmovno.u32" | "cmovno.h" => Some(Mnemonic::CmovnoU32),
             "cmovno.u64" => Some(Mnemonic::CmovnoU64),
 
-
             "cmovs" => Some(Mnemonic::Cmovs),
             "cmovs.u8" | "cmovs.b" => Some(Mnemonic::CmovsU8),
             "cmovs.u16" | "cmovs.q" => Some(Mnemonic::CmovsU16),
@@ -517,7 +554,6 @@ impl<'a> TokenIter<'a> {
             "cmovns.u16" | "cmovns.q" => Some(Mnemonic::CmovnsU16),
             "cmovns.u32" | "cmovns.h" => Some(Mnemonic::CmovnsU32),
             "cmovns.u64" => Some(Mnemonic::CmovnsU64),
-
 
             "cmova" | "cmovnbe" => Some(Mnemonic::Cmova),
             "cmova.u8" | "cmova.b" | "cmovnbe.u8" | "cmovnbe.b" => Some(Mnemonic::CmovaU8),
@@ -531,7 +567,6 @@ impl<'a> TokenIter<'a> {
             "cmovbe.u32" | "cmovbe.h" | "cmovna.u32" | "cmovna.h" => Some(Mnemonic::CmovbeU32),
             "cmovbe.u64" | "cmovna.u64" => Some(Mnemonic::CmovbeU64),
 
-
             "cmovg" | "cmovnle" => Some(Mnemonic::Cmovg),
             "cmovg.u8" | "cmovg.b" | "cmovnle.u8" | "cmovnle.b" => Some(Mnemonic::CmovgU8),
             "cmovg.u16" | "cmovg.q" | "cmovnle.u16" | "cmovnle.q" => Some(Mnemonic::CmovgU16),
@@ -543,7 +578,6 @@ impl<'a> TokenIter<'a> {
             "cmovle.u16" | "cmovle.q" | "cmovng.u16" | "cmovng.q" => Some(Mnemonic::CmovleU16),
             "cmovle.u32" | "cmovle.h" | "cmovng.u32" | "cmovng.h" => Some(Mnemonic::CmovleU32),
             "cmovle.u64" | "cmovng.u64" => Some(Mnemonic::CmovleU64),
-
 
             "cmovge" | "cmovnl" => Some(Mnemonic::Cmovge),
             "cmovge.u8" | "cmovge.b" | "cmovnl.u8" | "cmovnl.b" => Some(Mnemonic::CmovgeU8),
@@ -557,14 +591,10 @@ impl<'a> TokenIter<'a> {
             "cmovl.u32" | "cmovl.h" | "cmovnge.u32" | "cmovnge.h" => Some(Mnemonic::CmovlU32),
             "cmovl.u64" | "cmovnge.u64" => Some(Mnemonic::CmovlU64),
 
-            
             "call" => Some(Mnemonic::Call),
             "ret" => Some(Mnemonic::Ret),
 
             "rdt" => Some(Mnemonic::Rdt),
-
-            "stsp" => Some(Mnemonic::Stsp),
-            "rdsp" => Some(Mnemonic::Rdsp),
 
             "sysinfo" => Some(Mnemonic::Sysinfo),
 
@@ -576,10 +606,11 @@ impl<'a> TokenIter<'a> {
     }
 
     fn register(token: &str) -> Option<Register> {
-        if token == "sp" {
-            return Some(Register::new_sp());
-        } else if token == "ip" {
-            return Some(Register::new_ip());
+        match token {
+            "sp" => return Some(Register::new_sp()),
+            "ip" => return Some(Register::new_ip()),
+            "idtr" => return Some(Register::new_idtr()),
+            _ => {}
         }
 
         // The type of register, whether its 8, 16, 32, or 64 bits

@@ -13,26 +13,23 @@ use std::{
     ops::Index,
 };
 
-struct GPRegister(u8);
+struct ValidRegister(u8);
 
-impl GPRegister {
-    pub fn get_gp(&self) -> u8 {
-        // This value is garunteed to be a valid index for any GP register
+impl ValidRegister {
+    pub fn get_encoding(&self) -> u8 {
+        // This is garunteed to be a valid encoding
         self.0
     }
 }
 
-impl TryFrom<Register> for GPRegister {
+impl TryFrom<Register> for ValidRegister {
     type Error = anyhow::Error;
 
     fn try_from(value: Register) -> std::result::Result<Self, Self::Error> {
-        if let Some(index) = value.get_gp() {
-            Ok(Self(index))
+        if value.is_valid() {
+            Ok(Self(value.get_encoding()))
         } else {
-            let as_str: &str = value.into();
-            Err(anyhow!(
-                "{as_str} is not a general purpose register (r0 -> r15)"
-            ))
+            Err(anyhow!("Register is not a valid register"))
         }
     }
 }
@@ -63,16 +60,16 @@ impl From<Relocation> for Size {
     }
 }
 
-fn reg_transfer_byte(dest: GPRegister, src: GPRegister) -> u8 {
+fn reg_transfer_byte(dest: ValidRegister, src: ValidRegister) -> u8 {
     /*
      *  reg/reg transfer byte encoding
      *     bit:   7 6 5 4   3 2 1 0
      * purpose:   dst reg | src reg
      */
-    dest.get_gp() << 4 | src.get_gp()
+    dest.get_encoding() << 4 | src.get_encoding()
 }
 
-fn imm_transfer_byte(dest: GPRegister, size: Size) -> u8 {
+fn imm_transfer_byte(dest: ValidRegister, size: Size) -> u8 {
     /*
      *                 Byte layout
      *     bit:   7 6 5 4    3 2    1  0
@@ -81,7 +78,7 @@ fn imm_transfer_byte(dest: GPRegister, size: Size) -> u8 {
      * the `size` field tells the CPU how bytes to read for the immediate
      */
 
-    dest.get_gp() << 4 | (size as u8) << 2
+    dest.get_encoding() << 4 | (size as u8) << 2
 }
 
 // The mem transfer byte encoding layout
@@ -97,20 +94,20 @@ fn imm_transfer_byte(dest: GPRegister, size: Size) -> u8 {
  *   0b11 | Immediate address
  */
 
-fn disp_transfer_byte(dest: GPRegister, size: Size) -> u8 {
-    dest.get_gp() << 4 | 0b00 << 2 | (size as u8)
+fn disp_transfer_byte(dest: ValidRegister, size: Size) -> u8 {
+    dest.get_encoding() << 4 | 0b00 << 2 | (size as u8)
 }
 
-fn sp_rel_transfer_byte(dest: GPRegister, size: Size) -> u8 {
-    dest.get_gp() << 4 | 0b01 << 2 | (size as u8)
+fn sp_rel_transfer_byte(dest: ValidRegister, size: Size) -> u8 {
+    dest.get_encoding() << 4 | 0b01 << 2 | (size as u8)
 }
 
-fn base_index_transfer_byte(dest: GPRegister, size: Size) -> u8 {
-    dest.get_gp() << 4 | 0b10 << 2 | (size as u8)
+fn base_index_transfer_byte(dest: ValidRegister, size: Size) -> u8 {
+    dest.get_encoding() << 4 | 0b10 << 2 | (size as u8)
 }
 
-fn const_addr_transfer_byte(dest: GPRegister, size: Size) -> u8 {
-    dest.get_gp() << 4 | 0b11 << 2 | (size as u8)
+fn const_addr_transfer_byte(dest: ValidRegister, size: Size) -> u8 {
+    dest.get_encoding() << 4 | 0b11 << 2 | (size as u8)
 }
 
 /// Creates the memory index byte used in normal Base + Index * Scale + Displacement,
@@ -215,7 +212,6 @@ pub fn calculate_disp32_offset(pc: u64, addr: u64) -> Result<i32> {
         .context("Displacement is too large to fit in 4 bytes")
 }
 
-
 impl Assembler {
     fn get_section(&mut self) -> &mut Section {
         self.get_section_mut().unwrap()
@@ -238,6 +234,8 @@ impl Assembler {
             self.get_section().write_u8(EXTENSION_BYTE);
         }
 
+        // Certain encoding branches I.E when the instruction has the `OPCODE_REG` flag set will
+        // expect the opcode to be written here
         self.get_section().write_u8(instruction.encoding.opcode);
 
         if options.intersects(EncodingFlags::DATA_TRANSFER) {
@@ -446,7 +444,9 @@ impl Assembler {
                     let base_index_byte = memory_index.base.get_gp().unwrap_or(0) << 4
                         | memory_index.index.get_gp().unwrap_or(0);
 
-                    if !instruction.reloc[1] && let Ok(disp) = i16::try_from(memory_index.disp as i64) {
+                    if !instruction.reloc[1]
+                        && let Ok(disp) = i16::try_from(memory_index.disp as i64)
+                    {
                         // We set this bit to one to signal to the CPU that this instruction has a
                         // two byte displacement
                         bis_byte |= bit!(1);
