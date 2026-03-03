@@ -8,8 +8,62 @@
 #include <stdlib.h>
 #include <time.h>
 
-#define LOOKUP_TABLE_IMPL
+// #define LOOKUP_TABLE_IMPL
 
+static void intpt(Cpu* cpu, int index) {
+    if (index == 0x80) {
+        printf("Cycle: %llu\n", cpu->clock_count);
+        for (int i = 0; i < 16; i++) {
+            uint64_t value = cpu->registers[i].r;
+            printf("r%llu = %016llx (%lld)\n", (uint64_t)i, value,
+                   (int64_t)value);
+        }
+
+        printf("ip: %llu\nsp: %llu\n", cpu->registers[IP_INDEX].r,
+               cpu->registers[SP_INDEX].r);
+
+        printf("IDR: %016llx (%llu)\n", cpu->idtr, cpu->idtr);
+
+        printf("ZF | CF | OF | SF\n");
+
+        if (cpu->flags & FLAG_ZERO) {
+            printf("1  | ");
+
+        } else {
+            printf("0  | ");
+        }
+        if (cpu->flags & FLAG_CARRY) {
+
+            printf("1  | ");
+        } else {
+
+            printf("0  | ");
+        }
+        if (cpu->flags & FLAG_OVERFLOW) {
+
+            printf("1  | ");
+        } else {
+
+            printf("0  | ");
+        }
+        if (cpu->flags & FLAG_SIGN) {
+
+            printf("1\n");
+        } else {
+
+            printf("0\n");
+        }
+
+        double elapsed = timer_elapsed_seconds(&cpu->timer);
+        double instructions_per_second = cpu->clock_count / elapsed;
+        double mips = instructions_per_second / 1e6;
+        printf("MIPS: %f\n", mips);
+
+        cpu->exit = true;
+    } else if (index == 0x82) {
+        printf("DEBUG PRINT %llu\n", cpu->clock_count);
+    }
+}
 
 static inline uint64_t do_add(Cpu* cpu, uint64_t left, uint64_t right) {
     uint64_t sum = left + right;
@@ -211,9 +265,9 @@ static void handle_invl(Cpu* cpu, instruction* instr, uint64_t src) {
 }
 
 static void handle_halt(Cpu* cpu, instruction* instr, uint64_t src) {
-    printf("HALT!\n");
+    printf("HALT AT %016llx (%llu)!\n", cpu->registers[IP_INDEX].r, cpu->registers[IP_INDEX].r);
     cpu->halt = true;
-    while(1) {
+    while (1) {
     }
 }
 
@@ -320,10 +374,14 @@ static void handle_sysinfo(Cpu* cpu, instruction* instr, uint64_t src) {
         *r0 = CLOCK_HZ;
         cpu->registers[1].r = BLOCK_SIZE;
     }
+    // Temporary, for debug
+    else if (*r0 == 2) {
+        intpt(cpu, 0x80);
+        exit(1);
+    }
 }
 
-void (*op_handlers[op_LENGTH])(Cpu* cpu, instruction* instr,
-                                  uint64_t src) = {
+void (*op_handlers[op_LENGTH])(Cpu* cpu, instruction* instr, uint64_t src) = {
     [op_invl] = handle_invl,      [op_halt] = handle_halt,
     [op_int] = handle_int,        [op_mov] = handle_mov,
     [op_add] = handle_add,        [op_sub] = handle_sub,

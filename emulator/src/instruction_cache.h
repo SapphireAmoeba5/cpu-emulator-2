@@ -29,3 +29,4 @@ typedef struct {
 
 instruction_cache instr_cache_create();
 block* instr_cache_get(instruction_cache* cache, uint64_t address);
+void instr_cache_clear(instruction_cache* cache);

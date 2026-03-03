@@ -19,7 +19,8 @@ instruction_cache instr_cache_create() {
 bucket_entry* add_new_entry_to_bucket(bucket* bucket, uint64_t key) {
     if (bucket->len >= bucket->cap) {
         bucket->cap = (bucket->cap + 1) * 2;
-        bucket->entries = realloc(bucket->entries, bucket->cap * sizeof(bucket_entry));
+        bucket->entries =
+            realloc(bucket->entries, bucket->cap * sizeof(bucket_entry));
     }
 
     bucket_entry* entry = &bucket->entries[bucket->len++];
@@ -37,11 +38,23 @@ block* instr_cache_get(instruction_cache* cache, uint64_t address) {
     uint64_t index = get_index(address, cache->cap);
     bucket* bucket = &cache->buckets[index];
 
-
-    for (int i = 0; i < bucket->len; i++) {
+    for (u64 i = 0; i < bucket->len; i++) {
         if (bucket->entries[i].key == address) {
             return &bucket->entries[i].buf;
         }
     }
     return &add_new_entry_to_bucket(bucket, address)->buf;
+}
+
+void instr_cache_clear(instruction_cache* cache) {
+    for (u64 i = 0; i < cache->cap; i++) {
+        bucket* bucket = &cache->buckets[i];
+        for (u64 j = 0; j < bucket->len; j++) {
+            bucket_entry* entry = &bucket->entries[j];
+            free(entry->buf.instructions);
+        }
+        free(bucket->entries);
+        bucket->cap = 0;
+        bucket->len = 0;
+    }
 }

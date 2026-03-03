@@ -4,6 +4,7 @@
 #include "decode.h"
 #include "execute.h"
 #include "instruction_cache.h"
+#include "interrupt_flags.h"
 #include "memory.h"
 #include <setjmp.h>
 #include <stdatomic.h>
@@ -14,61 +15,6 @@
 #include <stdlib.h>
 #include <string.h>
 #include <time.h>
-
-static void intpt(Cpu* cpu, int index) {
-    if (index == 0x80) {
-        printf("Cycle: %llu\n", cpu->clock_count);
-        for (int i = 0; i < 16; i++) {
-            uint64_t value = cpu->registers[i].r;
-            printf("r%llu = %016llx (%lld)\n", (uint64_t)i, value,
-                   (int64_t)value);
-        }
-
-        printf("ip: %llu\nsp: %llu\n", cpu->registers[IP_INDEX].r,
-               cpu->registers[SP_INDEX].r);
-
-        printf("IDR: %016llx (%llu)\n", cpu->idtr, cpu->idtr);
-
-        printf("ZF | CF | OF | SF\n");
-
-        if (cpu->flags & FLAG_ZERO) {
-            printf("1  | ");
-
-        } else {
-            printf("0  | ");
-        }
-        if (cpu->flags & FLAG_CARRY) {
-
-            printf("1  | ");
-        } else {
-
-            printf("0  | ");
-        }
-        if (cpu->flags & FLAG_OVERFLOW) {
-
-            printf("1  | ");
-        } else {
-
-            printf("0  | ");
-        }
-        if (cpu->flags & FLAG_SIGN) {
-
-            printf("1\n");
-        } else {
-
-            printf("0\n");
-        }
-
-        double elapsed = timer_elapsed_seconds(&cpu->timer);
-        double instructions_per_second = cpu->clock_count / elapsed;
-        double mips = instructions_per_second / 1e6;
-        printf("MIPS: %f\n", mips);
-
-        cpu->exit = true;
-    } else if (index == 0x82) {
-        printf("DEBUG PRINT %llu\n", cpu->clock_count);
-    }
-}
 
 void cpu_write_8(Cpu* cpu, uint64_t data, uint64_t address) {
     if (!address_bus_write_n(cpu->bus, address, &data, 8)) {
@@ -130,13 +76,40 @@ void cpu_pop(Cpu* cpu, uint64_t* out) {
 void cpu_create(Cpu* cpu, address_bus* bus) {
     memset(cpu, 0, sizeof(Cpu));
 
+    memset(&cpu->iflag_mask, 0xff, sizeof(Cpu));
+    cpu->interrupt_enable = 0;
     cpu->cache = instr_cache_create();
     cpu->bus = bus;
     timer_start(&cpu->timer);
 }
 
+/// Flushes the caches and resets the instruction pointer back to zero
+inline static void cpu_reset(Cpu* cpu) {
+    instr_cache_clear(&cpu->cache);
+    cpu->interrupt_enable = 0;
+    memset(&cpu->iflag_mask, 0xff, sizeof(cpu->iflag_mask));
+}
+
+inline static bool cpu_pending_interrupt(Cpu* cpu) {
+    return atomic_load_explicit(&cpu->pending_interrupt, memory_order_relaxed);
+}
+
+inline static void push_interrupt_state(Cpu* cpu) {
+    // TODO: Implement this and rename the function
+}
+
+/// Set's the instruction pointer to the interrupt handler associated with the current interrupt vector, 
+/// and pushes the cpu state to the stack
+void cpu_call_interrupt(Cpu* cpu, u8 vector) {
+    u64 handler;
+    cpu_read_8(cpu, cpu->idtr + (vector * 8), &handler);
+    cpu->registers[IP_INDEX].r = handler;
+    push_interrupt_state(cpu);
+}
+
 void cpu_except(Cpu* cpu, error_t error) {
-    longjmp(cpu->interrupt_jmp, (int)error + 1);
+    cpu->software_interrupt_index = (u8)error;
+    longjmp(cpu->interrupt_jmp, 1);
 }
 
 // Does not free the address bus, that is owned by the caller to cpu_create
@@ -145,15 +118,13 @@ void cpu_destroy(Cpu* cpu) {
     return;
 }
 
+
 void cpu_run(Cpu* cpu) {
     // Any inerrupts will jump here
     int code = setjmp(cpu->interrupt_jmp);
     if (code != 0) {
-        int interrupt_id = code - 1;
-        printf("Interrupt: %d\n", interrupt_id);
-        intpt(cpu, interrupt_id);
-
-        cpu->exit = true;
+        printf("Calling interrupt %d\n", cpu->software_interrupt_index);
+        cpu_call_interrupt(cpu, cpu->software_interrupt_index);
     }
 
     while (!cpu->exit) {
@@ -193,6 +164,19 @@ void cpu_run(Cpu* cpu) {
                 i++;
             }
             cpu->clock_count += i;
+
+            if(cpu->interrupt_enable && cpu_pending_interrupt(cpu)) {
+                spinlock_lock(&cpu->iflag_lock);
+
+                if(iflag_non_zero(&cpu->iflags)) {
+                    u8 interrupt_index = iflag_trailing_zeros(&cpu->iflags);
+                    iflag_unset_bit(&cpu->iflags, interrupt_index);
+                } else {
+                    atomic_store_explicit(&cpu->pending_interrupt, false, memory_order_relaxed); 
+                }
+
+                spinlock_unlock(&cpu->iflag_lock);
+            }
         }
     }
 }

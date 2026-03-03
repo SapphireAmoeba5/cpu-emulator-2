@@ -2,6 +2,7 @@
 #include "device/test_device.h"
 #include "bus_device.h"
 #include "cpu.h"
+#include "interrupt_flags.h"
 #include "free_list.h"
 #include "memory.h"
 #include "timer.h"
