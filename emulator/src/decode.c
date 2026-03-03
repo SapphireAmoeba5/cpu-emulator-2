@@ -63,7 +63,7 @@ inline static error_t fetch_8(Cpu* cpu, uint64_t* out) {
 // clang-format off
 iop ops[] = 
 {
-    /* 0x00 */ op_halt, op_int, op_ret, op_invl, op_invl, op_mov, op_mov, op_mov, op_str, op_mov, op_mov, op_invl, op_invl, op_invl, op_invl, op_invl,
+    /* 0x00 */ op_halt, op_int, op_ret, op_iret, op_invl, op_mov, op_mov, op_mov, op_str, op_mov, op_mov, op_invl, op_invl, op_invl, op_invl, op_invl,
     /* 0x10 */ op_mov, op_mov, op_mov, op_mov, op_mov, op_mov, op_mov, op_mov, op_mov, op_mov, op_mov, op_mov, op_mov, op_mov, op_mov, op_call,
     /* 0x20 */ op_mov, op_add, op_sub, op_mul, op_div, op_idiv, op_and, op_or, op_xor, op_cmp, op_test, op_invl, op_invl, op_invl, op_invl, op_invl,
     /* 0x30 */ op_mov, op_add, op_sub, op_mul, op_div, op_idiv, op_and, op_or, op_xor, op_cmp, op_test, op_invl, op_invl, op_invl, op_invl, op_invl,
@@ -381,8 +381,9 @@ error_t cpu_decode(Cpu* cpu, instruction* instr, bool* branch_point) {
     case 0x01:           // The interrupt instruction
         instr->op_src = op_src_immediate;
         return fetch(cpu, (uint8_t*)&instr->immediate);
-    case 0x00:
+    case 0x00: // HALT instruction
     case 0x02: // RET instruction
+    case 0x03: // IRET instruction
         // These instructions are usually have some special operation and don't
         // need anything else to be modified
         *branch_point = true;

@@ -94,12 +94,49 @@ inline static bool cpu_pending_interrupt(Cpu* cpu) {
     return atomic_load_explicit(&cpu->pending_interrupt, memory_order_relaxed);
 }
 
-inline static void push_interrupt_state(Cpu* cpu) {
-    // TODO: Implement this and rename the function
+void push_interrupt_state(Cpu* cpu) {
+    struct {
+        uint64_t ip;
+        flags_t flags;
+    } state;
+
+    // Ensure no padding bytes
+    static_assert(sizeof(state) == sizeof(uint64_t) + sizeof(flags_t));
+
+    state.ip = cpu->registers[IP_INDEX].r;
+    state.flags = cpu->flags;
+
+    cpu->registers[SP_INDEX].r -= sizeof(state);
+    if (!address_bus_write_n(cpu->bus, cpu->registers[SP_INDEX].r, &state,
+                             sizeof(state))) {
+        // Reset the cpu if the write fails
+        cpu_reset(cpu);
+        return;
+    }
 }
 
-/// Set's the instruction pointer to the interrupt handler associated with the current interrupt vector, 
-/// and pushes the cpu state to the stack
+void pop_interrupt_state(Cpu* cpu) {
+    struct {
+        uint64_t ip;
+        flags_t flags;
+    } state;
+
+    // Ensure no padding bytes
+    static_assert(sizeof(state) == sizeof(uint64_t) + sizeof(flags_t));
+
+    if (!address_bus_read_n(cpu->bus, cpu->registers[SP_INDEX].r, &state,
+                            sizeof(state))) {
+        // Reset the cpu if the read fails
+        cpu_reset(cpu);
+        return;
+    }
+    cpu->registers[SP_INDEX].r += sizeof(state);
+    cpu->registers[IP_INDEX].r = state.ip;
+    cpu->flags = state.flags;
+}
+
+/// Set's the instruction pointer to the interrupt handler associated with the
+/// current interrupt vector, and pushes the cpu state to the stack
 void cpu_call_interrupt(Cpu* cpu, u8 vector) {
     u64 handler;
     cpu_read_8(cpu, cpu->idtr + (vector * 8), &handler);
@@ -117,7 +154,6 @@ void cpu_destroy(Cpu* cpu) {
     // TODO: Free the instruction cache
     return;
 }
-
 
 void cpu_run(Cpu* cpu) {
     // Any inerrupts will jump here
@@ -165,14 +201,15 @@ void cpu_run(Cpu* cpu) {
             }
             cpu->clock_count += i;
 
-            if(cpu->interrupt_enable && cpu_pending_interrupt(cpu)) {
+            if (cpu->interrupt_enable && cpu_pending_interrupt(cpu)) {
                 spinlock_lock(&cpu->iflag_lock);
 
-                if(iflag_non_zero(&cpu->iflags)) {
+                if (iflag_non_zero(&cpu->iflags)) {
                     u8 interrupt_index = iflag_trailing_zeros(&cpu->iflags);
                     iflag_unset_bit(&cpu->iflags, interrupt_index);
                 } else {
-                    atomic_store_explicit(&cpu->pending_interrupt, false, memory_order_relaxed); 
+                    atomic_store_explicit(&cpu->pending_interrupt, false,
+                                          memory_order_relaxed);
                 }
 
                 spinlock_unlock(&cpu->iflag_lock);

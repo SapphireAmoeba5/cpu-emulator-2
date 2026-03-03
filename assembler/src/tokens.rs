@@ -593,6 +593,7 @@ impl<'a> TokenIter<'a> {
 
             "call" => Some(Mnemonic::Call),
             "ret" => Some(Mnemonic::Ret),
+            "iret" => Some(Mnemonic::Iret),
 
             "rdt" => Some(Mnemonic::Rdt),
 

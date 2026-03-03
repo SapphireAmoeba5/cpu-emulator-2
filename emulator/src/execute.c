@@ -4,6 +4,7 @@
 #include "decode.h"
 #include "instruction.h"
 #include "timer.h"
+#include "util/common.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <time.h>
@@ -265,7 +266,8 @@ static void handle_invl(Cpu* cpu, instruction* instr, uint64_t src) {
 }
 
 static void handle_halt(Cpu* cpu, instruction* instr, uint64_t src) {
-    printf("HALT AT %016llx (%llu)!\n", cpu->registers[IP_INDEX].r, cpu->registers[IP_INDEX].r);
+    printf("HALT AT %016llx (%llu)!\n", cpu->registers[IP_INDEX].r,
+           cpu->registers[IP_INDEX].r);
     cpu->halt = true;
     while (1) {
     }
@@ -359,6 +361,12 @@ static void handle_ret(Cpu* cpu, instruction* instr, uint64_t src) {
     cpu->registers[IP_INDEX].r = ret_address;
 }
 
+static void handle_iret(Cpu* cpu, instruction* instr, u64 src) {
+    UNUSED(instr);
+    UNUSED(src);
+    pop_interrupt_state(cpu);
+}
+
 static void handle_push(Cpu* cpu, instruction* instr, uint64_t src) {
     cpu_push(cpu, *instr->dest);
 }
@@ -382,17 +390,17 @@ static void handle_sysinfo(Cpu* cpu, instruction* instr, uint64_t src) {
 }
 
 void (*op_handlers[op_LENGTH])(Cpu* cpu, instruction* instr, uint64_t src) = {
-    [op_invl] = handle_invl,      [op_halt] = handle_halt,
-    [op_int] = handle_int,        [op_mov] = handle_mov,
-    [op_add] = handle_add,        [op_sub] = handle_sub,
-    [op_str] = handle_str,        [op_mul] = handle_mul,
-    [op_div] = handle_div,        [op_idiv] = handle_idiv,
-    [op_and] = handle_and,        [op_or] = handle_or,
-    [op_xor] = handle_xor,        [op_cmp] = handle_cmp,
-    [op_test] = handle_test,      [op_rdt] = handle_rdt,
-    [op_call] = handle_call,      [op_ret] = handle_ret,
-    [op_push] = handle_push,      [op_pop] = handle_pop,
-    [op_sysinfo] = handle_sysinfo};
+    [op_invl] = handle_invl, [op_halt] = handle_halt,
+    [op_int] = handle_int,   [op_mov] = handle_mov,
+    [op_add] = handle_add,   [op_sub] = handle_sub,
+    [op_str] = handle_str,   [op_mul] = handle_mul,
+    [op_div] = handle_div,   [op_idiv] = handle_idiv,
+    [op_and] = handle_and,   [op_or] = handle_or,
+    [op_xor] = handle_xor,   [op_cmp] = handle_cmp,
+    [op_test] = handle_test, [op_rdt] = handle_rdt,
+    [op_call] = handle_call, [op_ret] = handle_ret,
+    [op_iret] = handle_iret, [op_push] = handle_push,
+    [op_pop] = handle_pop,   [op_sysinfo] = handle_sysinfo};
 
 void cpu_execute(Cpu* cpu, instruction* instr) {
     uint64_t src = 0;
@@ -477,6 +485,9 @@ void cpu_execute(Cpu* cpu, instruction* instr) {
         return;
     case op_ret:
         handle_ret(cpu, instr, src);
+        return;
+    case op_iret:
+        handle_iret(cpu, instr, src);
         return;
     case op_sysinfo:
         handle_sysinfo(cpu, instr, src);

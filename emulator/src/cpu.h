@@ -37,7 +37,7 @@ typedef enum {
     MATH_ERROR,
 } error_t;
 
-typedef uint16_t flags_t;
+typedef uint64_t flags_t;
 
 constexpr flags_t FLAG_ZERO = BIT(0);
 constexpr flags_t FLAG_CARRY = BIT(1);
@@ -143,6 +143,11 @@ void cpu_call_interrupt(Cpu* cpu, u8 vector);
 void cpu_push(Cpu* cpu, uint64_t value);
 /// May only be called by CPU thread
 void cpu_pop(Cpu* cpu, uint64_t* out);
+
+// May only be called by the CPU thread
+void push_interrupt_state(Cpu* cpu);
+// May only be called by the CPU thread
+void pop_interrupt_state(Cpu* cpu);
 
 /// Long jumps to the Cpu's exception handler
 void cpu_except(Cpu* cpu, error_t error);

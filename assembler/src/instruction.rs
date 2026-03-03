@@ -214,6 +214,7 @@ pub enum Mnemonic {
 
     Call,
     Ret,
+    Iret,
 
     Rdt,
 
