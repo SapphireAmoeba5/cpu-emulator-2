@@ -140,8 +140,8 @@ void pop_interrupt_state(Cpu* cpu) {
 void cpu_call_interrupt(Cpu* cpu, u8 vector) {
     u64 handler;
     cpu_read_8(cpu, cpu->idtr + (vector * 8), &handler);
-    cpu->registers[IP_INDEX].r = handler;
     push_interrupt_state(cpu);
+    cpu->registers[IP_INDEX].r = handler;
 }
 
 void cpu_except(Cpu* cpu, error_t error) {
