@@ -53,8 +53,6 @@ void instr_cache_clear(instruction_cache* cache) {
             bucket_entry* entry = &bucket->entries[j];
             free(entry->buf.instructions);
         }
-        free(bucket->entries);
-        bucket->cap = 0;
         bucket->len = 0;
     }
 }

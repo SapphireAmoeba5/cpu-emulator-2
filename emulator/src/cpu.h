@@ -145,7 +145,7 @@ void cpu_push(Cpu* cpu, uint64_t value);
 void cpu_pop(Cpu* cpu, uint64_t* out);
 
 // May only be called by the CPU thread
-void push_interrupt_state(Cpu* cpu);
+bool push_interrupt_state(Cpu* cpu);
 // May only be called by the CPU thread
 void pop_interrupt_state(Cpu* cpu);
 

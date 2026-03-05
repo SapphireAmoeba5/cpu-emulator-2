@@ -386,6 +386,8 @@ static void handle_sysinfo(Cpu* cpu, instruction* instr, uint64_t src) {
     else if (*r0 == 2) {
         intpt(cpu, 0x80);
         exit(1);
+    } else if(*r0 == 3) {
+        printf("Debug log\n");
     }
 }
 

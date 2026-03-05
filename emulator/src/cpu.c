@@ -87,6 +87,7 @@ void cpu_create(Cpu* cpu, address_bus* bus) {
 inline static void cpu_reset(Cpu* cpu) {
     instr_cache_clear(&cpu->cache);
     cpu->interrupt_enable = 0;
+    cpu->registers[IP_INDEX].r = 0;
     memset(&cpu->iflag_mask, 0xff, sizeof(cpu->iflag_mask));
 }
 
@@ -94,7 +95,7 @@ inline static bool cpu_pending_interrupt(Cpu* cpu) {
     return atomic_load_explicit(&cpu->pending_interrupt, memory_order_relaxed);
 }
 
-void push_interrupt_state(Cpu* cpu) {
+bool push_interrupt_state(Cpu* cpu) {
     struct {
         uint64_t ip;
         flags_t flags;
@@ -111,8 +112,9 @@ void push_interrupt_state(Cpu* cpu) {
                              sizeof(state))) {
         // Reset the cpu if the write fails
         cpu_reset(cpu);
-        return;
+        return false;
     }
+    return true;
 }
 
 void pop_interrupt_state(Cpu* cpu) {
@@ -139,9 +141,13 @@ void pop_interrupt_state(Cpu* cpu) {
 /// current interrupt vector, and pushes the cpu state to the stack
 void cpu_call_interrupt(Cpu* cpu, u8 vector) {
     u64 handler;
-    cpu_read_8(cpu, cpu->idtr + (vector * 8), &handler);
-    push_interrupt_state(cpu);
-    cpu->registers[IP_INDEX].r = handler;
+    if (!address_bus_read_n(cpu->bus, cpu->idtr + (vector * 8), &handler, 8)) {
+        cpu_reset(cpu);
+        return;
+    }
+    if (push_interrupt_state(cpu)) {
+        cpu->registers[IP_INDEX].r = handler;
+    }
 }
 
 void cpu_except(Cpu* cpu, error_t error) {
