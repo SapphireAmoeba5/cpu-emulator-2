@@ -146,8 +146,8 @@ fn insert_into_tree(left: &mut Box<Node>, op: BinaryOp, right: Box<Node>) {
     /// Replaces `left` with a new Node::Binary with the operation `op` and the left and right
     /// fields being the old `left` value and the given `right` value
     fn insert_as_binary_op(left: &mut Box<Node>, op: BinaryOp, right: Box<Node>) {
-        // Allocate the box here to prevent a panic from happening during the time there are
-        // two Box's that "own" the same memory which causes memory unsafety
+        // Allocate the box here to prevent a panic from happening between the ptr::read and
+        // ptr::write, panicking would cause a double-free and UB
         let uninit = Box::new_uninit();
         let op = Node::BinaryOp {
             op,
@@ -157,6 +157,8 @@ fn insert_into_tree(left: &mut Box<Node>, op: BinaryOp, right: Box<Node>) {
             right,
         };
         // SAFETY: `left` is a reference so its garunteed to be a safe pointer
+        // We need to use ptr::write because `left` has already been 'moved' with `ptr::read`.
+        // Writing normally would cause the old contents, which `left` doesn't own, to be dropped
         unsafe { std::ptr::write(left, Box::write(uninit, op)) };
     }
 

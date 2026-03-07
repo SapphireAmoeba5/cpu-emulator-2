@@ -150,6 +150,15 @@ void cpu_call_interrupt(Cpu* cpu, u8 vector) {
     }
 }
 
+void cpu_interrupt_request(Cpu* cpu, u8 interrupt) {
+    spinlock_lock(&cpu->iflag_lock);
+
+    iflag_set_bit(&cpu->iflags, interrupt);
+    atomic_store_explicit(&cpu->pending_interrupt, true, memory_order_relaxed);
+
+    spinlock_unlock(&cpu->iflag_lock);
+}
+
 void cpu_except(Cpu* cpu, error_t error) {
     cpu->software_interrupt_index = (u8)error;
     longjmp(cpu->interrupt_jmp, 1);
