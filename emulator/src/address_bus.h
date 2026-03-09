@@ -2,9 +2,14 @@
 
 #include <stddef.h>
 #include <stdint.h>
+#include <string.h>
+#include <threads.h>
 
 #include "bus_device.h"
 #include "free_list.h"
+#include "job_queue.h"
+#include "thread_pool.h"
+#include "util/types.h"
 
 struct Cpu;
 
@@ -57,15 +62,20 @@ typedef struct {
     bus_mapping mappings[MAX_DEVICES];
     uint64_t mappings_count;
 
-    
     free_list list;
+    thread_pool pool;
 } address_bus;
 
-// Initializes the address bus to a proper default state
+/// Initializes the address bus to a proper default state
 void address_bus_init(address_bus* bus);
+/// This function is not thread safe. It may only be called when no other
+/// threads are using this
+void address_bus_deinit(address_bus* bus);
 
+/// Thread-safe
 bool address_bus_write_n(address_bus* bus, uint64_t address, void* src,
                          uint64_t n);
+/// Thread-safe
 bool address_bus_read_n(address_bus* bus, uint64_t address, void* dst,
                         uint64_t n);
 
@@ -73,6 +83,8 @@ bool address_bus_read_n(address_bus* bus, uint64_t address, void* dst,
 ///
 /// `size` will be rounded to the next power of two that is equal or greater
 /// than `size`.
+///
+/// Not thread-safe
 ///
 /// Returns:
 /// If the memory was successfully added into the bus, returns true.
@@ -82,6 +94,7 @@ bool address_bus_read_n(address_bus* bus, uint64_t address, void* dst,
 /// and if the address range of the memory overlaps any other range.
 bool address_bus_add_memory(address_bus* bus, uint64_t size);
 
+/// Not thread-safe
 /// Returns:
 /// If the device was successfully added, returns true.
 /// If the device was unable to be added, returns false.

@@ -5,12 +5,14 @@
 #include "interrupt_flags.h"
 #include "free_list.h"
 #include "memory.h"
+#include "thread_pool.h"
 #include "timer.h"
 #include <errno.h>
 #include <stdatomic.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <threads.h>
 #include <time.h>
 
 /// Reads the file at PATH, and returns an allocated bufer and writes the length

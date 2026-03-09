@@ -76,7 +76,6 @@ void cpu_pop(Cpu* cpu, uint64_t* out) {
 void cpu_create(Cpu* cpu, address_bus* bus) {
     memset(cpu, 0, sizeof(Cpu));
 
-    memset(&cpu->iflag_mask, 0xff, sizeof(Cpu));
     cpu->interrupt_enable = 0;
     cpu->cache = instr_cache_create();
     cpu->bus = bus;
@@ -88,7 +87,6 @@ inline static void cpu_reset(Cpu* cpu) {
     instr_cache_clear(&cpu->cache);
     cpu->interrupt_enable = 0;
     cpu->registers[IP_INDEX].r = 0;
-    memset(&cpu->iflag_mask, 0xff, sizeof(cpu->iflag_mask));
 }
 
 inline static bool cpu_pending_interrupt(Cpu* cpu) {

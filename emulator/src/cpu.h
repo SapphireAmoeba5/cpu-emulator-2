@@ -91,14 +91,6 @@ typedef struct Cpu {
         iflag iflags;
     };
 
-    // This is a private variable that only the CPU thread will touch.
-    // Each bit in this mask corresponds to a pending interrupt bit in `iflags`,
-    // if the result of a bitwise and with `iflag_mask` and `iflags` causes a
-    // bit to be 0, that interrupt will not be fired, if it a 1 that interrupt
-    // will be fired
-    // Initialized to all ones
-    iflag iflag_mask;
-
     // If non-zero, interrupts are enabled, if zero, then maskable-interrupts
     // are disabled It is a uint64_t so that it can be set and unset with the
     // existing code for `op_mov`

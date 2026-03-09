@@ -1,13 +1,15 @@
 #include "address_bus.h"
 #include "free_list.h"
+#include "job_queue.h"
+#include "thread_pool.h"
 #include "util/barrier.h"
 #include "util/common.h"
-#include "util/types.h"
 #include <assert.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <threads.h>
 
 /// Returns the addrss mask of `size`.
 /// Size must be a power of two
@@ -59,7 +61,13 @@ static inline bool insert_mapping(address_bus* bus, bus_mapping mapping) {
 
 void address_bus_init(address_bus* bus) {
     memset(bus, 0, sizeof(*bus));
+    thread_pool_init(&bus->pool);
     freelist_init(&bus->list);
+}
+
+void address_bus_deinit(address_bus* bus) {
+    // TODO: freelist_deinit
+    thread_pool_deinit(&bus->pool);
 }
 
 bool address_bus_write_n(address_bus* bus, uint64_t address, void* src,
@@ -101,7 +109,7 @@ bool address_bus_write_n(address_bus* bus, uint64_t address, void* src,
                 }
 
                 mmio->device->vtable->device_write_n(mmio->device, offset, src,
-                                                    n);
+                                                     n);
             }
 
             return true;

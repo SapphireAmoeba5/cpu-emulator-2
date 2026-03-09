@@ -28,6 +28,8 @@ add_executable(${PROJECT_NAME}
     src/main.c
     src/cpu.c
     src/decode.c
+    src/thread_pool.c
+    src/job_queue.c
     src/execute.c
     src/instruction_cache.c
     src/block.c

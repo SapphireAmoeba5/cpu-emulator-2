@@ -5,6 +5,16 @@
 #define BIT(n) 1 << (n)
 
 #ifdef NDEBUG
+#define UNREACHABLE_SAFE(message) \
+    fprintf(stderr, "%s", message); \
+    abort()
+#else
+#define UNREACHABLE_SAFE(message) \
+    fprintf(stderr, "%s:%d\n\t%s", __FILE__, __LINE__, message); \
+    abort()
+#endif
+
+#ifdef NDEBUG
 #define UNREACHABLE() __builtin_unreachable()
 #else
 #include <stdlib.h>
