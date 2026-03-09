@@ -7,18 +7,18 @@
 static int thread_pool_worker(void* arg) {
     thread_data* data = (thread_data*)arg;
 
-
     while (1) {
         mtx_lock(&data->cnd_mtx);
 
-        while (job_queue_is_empty(&data->jobs)) {
+        while (!data->exit && job_queue_is_empty(&data->jobs)) {
             cnd_wait(&data->cnd, &data->cnd_mtx);
-
-            if (data->exit) {
-                mtx_unlock(&data->cnd_mtx);
-                return 0;
-            }
         }
+
+        if (data->exit) {
+            mtx_unlock(&data->cnd_mtx);
+            return 0;
+        }
+
         // The mutex is locked at this point, it is safe to dequeue data
         job_data next_job = job_queue_dequeue(&data->jobs);
 
