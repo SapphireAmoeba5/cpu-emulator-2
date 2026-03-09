@@ -61,13 +61,12 @@ static inline bool insert_mapping(address_bus* bus, bus_mapping mapping) {
 
 void address_bus_init(address_bus* bus) {
     memset(bus, 0, sizeof(*bus));
-    thread_pool_init(&bus->pool);
     freelist_init(&bus->list);
 }
 
 void address_bus_deinit(address_bus* bus) {
     // TODO: freelist_deinit
-    thread_pool_deinit(&bus->pool);
+    freelist_deinit(&bus->list);
 }
 
 bool address_bus_write_n(address_bus* bus, uint64_t address, void* src,

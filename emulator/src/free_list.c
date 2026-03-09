@@ -4,6 +4,17 @@
 #include <stdio.h>
 #include <stdlib.h>
 
+void freelist_deinit(free_list* list) {
+    // Don't free the free_list pointer passed in, that is owned by the caller
+    free_list* current = list->next;
+
+    while(current != nullptr) {
+        free_list* tmp = current;
+        current = current->next;
+        free(tmp);
+    }
+}
+
 uint64_t freelist_allocate(free_list* list, uint64_t size, uint64_t align,
                            bool* success) {
     if(size == 0) {

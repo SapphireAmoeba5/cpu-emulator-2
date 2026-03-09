@@ -63,7 +63,6 @@ typedef struct {
     uint64_t mappings_count;
 
     free_list list;
-    thread_pool pool;
 } address_bus;
 
 /// Initializes the address bus to a proper default state

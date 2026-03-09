@@ -14,6 +14,7 @@ inline static void freelist_init(free_list* list) {
     list->size = UINT64_MAX;
     list->next = nullptr;
 }
+void freelist_deinit(free_list* list);
 
 /// Attempts to allocate `size` bytes with alignment `align`.
 /// On success returns the base address of the allocation and sets `*success` to true
