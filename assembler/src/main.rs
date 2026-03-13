@@ -18,9 +18,10 @@ use std::{
 };
 
 use crate::{
-    assembler::{emit::PREFIX_BYTE, Assembler},
+    assembler::{Assembler, emit::PREFIX_BYTE},
+    assembler_source::Lexer,
     instruction::Mnemonic,
-    linker::{link, Instr},
+    linker::{Instr, link},
     module::Module,
     opcode::EncodingFlags,
     tokens::TokenIter,
@@ -57,7 +58,7 @@ fn output_opcode_map() {
             opcode |= u16::from(encoding.opcode);
 
             if encoding.options.intersects(EncodingFlags::OPCODE_REG) {
-                if (opcode & 0x0f != 0) {
+                if opcode & 0x0f != 0 {
                     panic!("OPCODE_REG encoding must have the lowest 4 bits set to zero");
                 }
 
@@ -125,7 +126,9 @@ fn output_opcode_map() {
 
             if opcodes.contains_key(&opcode) {
                 print!("{opcode:02x} ");
-            } else if opcode == u16::from(EXTENSION_BYTE) || opcode & 0xfff0 == u16::from(PREFIX_BYTE) {
+            } else if opcode == u16::from(EXTENSION_BYTE)
+                || opcode & 0xfff0 == u16::from(PREFIX_BYTE)
+            {
                 print!("xx ");
             } else {
                 print!("-- ");

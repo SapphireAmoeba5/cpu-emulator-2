@@ -6,10 +6,12 @@ use bitflags::Flag;
 use itertools::izip;
 
 use std::collections::HashMap;
+use std::iter::Peekable;
+use std::ops::{Deref, DerefMut};
 use std::panic::resume_unwind;
 use std::{mem, usize};
 
-use anyhow::anyhow;
+use anyhow::{anyhow, bail};
 use spdlog::debug;
 
 use crate::assembler::symbol_table::{SymbolTable, Type};
@@ -26,6 +28,27 @@ use super::assembler_source::*;
 use super::tokens::*;
 
 use anyhow::{Context, Result};
+
+#[derive(Debug)]
+pub struct AssemblerToken {
+    pub token: Token,
+    pub line: usize,
+}
+
+pub trait AsmTokenIter<'a>: Iterator<Item = &'a AssemblerToken> {
+    fn is_equal_sign(&mut self) -> bool {
+        self.next()
+            .map(|a| matches!(a.token, Token::Equal))
+            .unwrap_or(false)
+    }
+
+    fn is_newline_or_eof(&mut self) -> bool {
+        self.next()
+            .map(|a| matches!(a.token, Token::Newline))
+            .unwrap_or(true)
+    }
+}
+impl<'a, T: Iterator<Item = &'a AssemblerToken>> AsmTokenIter<'a> for T {}
 
 fn get_operand_from_expr_result(result: ExprResult) -> (Operand, OperandFlags) {
     match result.type_ {
@@ -249,11 +272,7 @@ impl Assembler {
 }
 
 impl Assembler {
-    fn evaluate_expression(
-        &self,
-        expr: &Box<Node>,
-        current_section: usize,
-    ) -> Result<ExprResult> {
+    fn evaluate_expression(&self, expr: &Box<Node>, current_section: usize) -> Result<ExprResult> {
         match &**expr {
             Node::Constant(value) => Ok(ExprResult::new_imm(*value)),
             Node::Register(register) => Ok(ExprResult {
@@ -605,61 +624,73 @@ impl Assembler {
             current_line: 0,
         };
 
-        let result = assembler.parse_source(source);
+        let lexer = Lexer::new(&source);
+        let iter = TokenIter::new(lexer);
 
-        // if result {
-        //     assembler.fix_forward_references()?;
-        // }
+        let mut current_line = 1usize;
+        let tokens: Vec<AssemblerToken> = iter
+            .map(|token| match token {
+                Ok(token) => {
+                    if let Token::Newline = token {
+                        current_line += 1;
+                    }
+
+                    Ok(AssemblerToken {
+                        token,
+                        line: current_line,
+                    })
+                }
+                Err(e) => Err(e),
+            })
+            .collect::<Result<_>>()?;
+
+        let mut token_iter = tokens.iter().peekable();
+
+        let result = assembler.parse_source(&mut token_iter);
 
         result
             .then(|| assembler)
             .with_context(|| "Failed to assemble source")
     }
 
-    fn parse_source(&mut self, source: String) -> bool {
-        let source_code = SourceCode::new(source);
-
-        let mut token_iter = source_code.tokens();
+    fn parse_source<'a>(&mut self, token_iter: &mut Peekable<impl AsmTokenIter<'a>>) -> bool {
         let mut success = true;
 
-        loop {
-            let current_line = token_iter.line();
-            self.current_line = current_line;
-            let token = token_iter.next();
-            if let Ok(token) = token {
-                match token {
-                    Some(token) => {
-                        if let Err(e) = self.parse_token(token, &mut token_iter) {
-                            println!("Error {}:{current_line}:\n\t{e}", self.filename);
-                            success = false;
-                            token_iter.skip_line();
-                        }
-                    }
-                    // Stop iterating when iterator reaches None
-                    None => break,
-                }
-            } else if let Err(e) = &token {
-                println!("Error {}:{current_line}:\n\t{e}", self.filename);
+        while let Some(token) = token_iter.next() {
+            if let Err(e) = self.parse_token(&token, token_iter) {
+                println!("Error {}:{}:\n\t{e}", self.filename, token.line);
                 success = false;
-                token_iter.skip_line();
+                while let Some(token) = token_iter.next() {
+                    if let Token::Newline = token.token {
+                        break;
+                    }
+                }
             }
         }
 
         success
     }
 
-    fn parse_token(&mut self, token: Token, tokens: &mut TokenIter) -> Result<()> {
-        match token {
+    fn parse_token<'a>(
+        &mut self,
+        token: &AssemblerToken,
+        tokens: &mut Peekable<impl AsmTokenIter<'a>>,
+    ) -> Result<()> {
+        match &token.token {
             Token::Mnemonic(instruction) => self.parse_instruction(&instruction, tokens),
-            Token::Keyword(keyword) => self.parse_keyword(&keyword, tokens),
-            Token::Directive(directive) => self.parse_directive(directive, tokens),
-            Token::Identifier(id) => self.parse_label(id, tokens),
+            Token::Keyword(keyword) => self.parse_keyword(keyword, tokens),
+            Token::Directive(directive) => self.parse_directive(*directive, tokens),
+            Token::Identifier(id) => self.parse_label(id.clone(), tokens),
             Token::Newline => Ok(()),
             other => Err(anyhow!("Unknown token {other:?}")),
         }
     }
 
-    fn parse_instruction(&mut self, instruction: &Mnemonic, tokens: &mut TokenIter) -> Result<()> {
+    fn parse_instruction<'a>(
+        &mut self,
+        instruction: &Mnemonic,
+        tokens: &mut Peekable<impl AsmTokenIter<'a>>,
+    ) -> Result<()> {
         // All possible instruction encodings of the current mnemonic
         let encodings = get_encodings(*instruction);
 
@@ -746,9 +777,9 @@ impl Assembler {
     }
 
     /// TODO: Documentation
-    fn parse_operands(
+    fn parse_operands<'a>(
         &mut self,
-        tokens: &mut TokenIter,
+        tokens: &mut Peekable<impl AsmTokenIter<'a>>,
         operands: &mut [Operand; MAX_OPERANDS],
         reloc_needed: &mut [bool; MAX_OPERANDS],
         types: &mut [OperandFlags; MAX_OPERANDS],
@@ -760,7 +791,7 @@ impl Assembler {
             "Arrays not the same size"
         );
 
-        if matches!(tokens.peek()?.context("Expected token")?, Token::Newline) {
+        if let Some(Token::Newline) = tokens.peek().map(|a| &a.token) {
             return Ok(0);
         }
 
@@ -768,12 +799,13 @@ impl Assembler {
 
         let mut expecting_comma = false;
 
-        while let Some(token) = tokens.peek()? {
+        while let Some(token) = tokens.peek() {
+            let token = &token.token;
             if expecting_comma {
-                if matches!(token, Token::Comma) {
+                if let Token::Comma = token {
                     let _ = tokens.next();
                     expecting_comma = false;
-                } else if matches!(token, Token::Newline) {
+                } else if let Token::Newline = token {
                     // Don't consume the newline
                     expecting_comma = false;
                     break;
@@ -785,16 +817,17 @@ impl Assembler {
                 let current_section = self.get_section_index()?;
 
                 // The operand is a memory index, otherwise it's an expression/register
-                if matches!(tokens.peek()?.context("Expected token")?, Token::LSqrBrace) {
+                if let Token::LSqrBrace = tokens.peek().context("Expected token")?.token {
                     let _ = tokens.next();
                     let expr = parse_expr(tokens)?;
 
-                    if !matches!(
-                        tokens.next()?.context("Expected closing square bracket")?,
-                        Token::RSqrBrace
-                    ) {
+                    let Token::RSqrBrace = tokens
+                        .next()
+                        .context("Expected closing square bracket")?
+                        .token
+                    else {
                         return Err(anyhow!("Expected closing square bracket"));
-                    }
+                    };
 
                     // This function doesn't check if the scalar value is valid, and we won't
                     // either. The emit function will check it.
@@ -828,20 +861,20 @@ impl Assembler {
                         Offset,
                     }
 
-                    let flag_override = match tokens.peek()? {
-                        Some(Token::Dollar) => {
+                    let flag_override = match tokens.peek().context("Expected token")?.token {
+                        Token::Dollar => {
                             let _ = tokens.next();
                             FlagOverride::Constant
                         }
-                        Some(Token::Mul) => {
+                        Token::Mul => {
                             let _ = tokens.next();
                             FlagOverride::Memory
                         }
-                        Some(Token::AtSign) => {
+                        Token::AtSign => {
                             let _ = tokens.next();
                             FlagOverride::Addr
                         }
-                        Some(Token::Ampersand) => {
+                        Token::Ampersand => {
                             let _ = tokens.next();
                             FlagOverride::Offset
                         }
@@ -893,25 +926,34 @@ impl Assembler {
         if !expecting_comma {
             Ok(num_operands)
         } else {
-            Err(anyhow!("Expected comma"))
+            if tokens.peek().is_none() {
+                Ok(num_operands)
+            } else {
+                Err(anyhow!("Expected comma"))
+            }
         }
     }
 
-    fn parse_keyword(&mut self, keyword: &Keyword, tokens: &mut TokenIter) -> Result<()> {
+    fn parse_keyword<'a>(
+        &mut self,
+        keyword: &Keyword,
+        tokens: &mut Peekable<impl AsmTokenIter<'a>>,
+    ) -> Result<()> {
         match keyword {
             Keyword::Const => self.parse_const(tokens),
         }
     }
 
-    fn parse_label(&mut self, name: String, tokens: &mut TokenIter) -> Result<()> {
-        let token = tokens.next()?.context("Expected token but got EOF")?;
+    fn parse_label<'a>(
+        &mut self,
+        name: String,
+        tokens: &mut Peekable<impl AsmTokenIter<'a>>,
+    ) -> Result<()> {
+        let token = &tokens.next().context("Expected token but got EOF")?.token;
 
-        if !matches!(token, Token::Colon) {
-            return Err(anyhow!(
-                "Expected colon after identifier but got {}",
-                token.to_string()
-            ));
-        }
+        let Token::Colon = token else {
+            bail!("Expected colon after identifier but got {token}");
+        };
 
         let current_section = self.get_section_index()?;
         let position = self.sections[current_section].cursor();
@@ -926,13 +968,17 @@ impl Assembler {
         Ok(())
     }
 
-    fn parse_const(&mut self, tokens: &mut TokenIter) -> Result<()> {
+    fn parse_const<'a>(&mut self, tokens: &mut Peekable<impl AsmTokenIter<'a>>) -> Result<()> {
         let name = tokens
-            .next()?
+            .next()
             .with_context(|| "Expected variable name")?
-            .to_identifier()
-            .with_context(|| format!("Expected an identifier"))?;
-        tokens.is_equal_sign()?;
+            .token
+            .as_identifier()
+            .with_context(|| format!("Expected an identifier"))?
+            .to_string();
+        if !tokens.is_equal_sign() {
+            bail!("Expected equal sign");
+        }
 
         let expr = parse_expr(tokens)?;
         let value = self.evaluate_expression(&expr, Self::NO_SECTION)?;
@@ -940,7 +986,10 @@ impl Assembler {
             return Err(anyhow!("Invalid expression for constant"));
         }
 
-        tokens.newline_or_eof()?;
+        if !tokens.is_newline_or_eof() {
+            bail!("Expected a newline or EOF");
+        }
+
         self.symbols
             .insert_symbol(name, value.immediate, Type::Constant, None)
     }
@@ -971,6 +1020,10 @@ mod tests {
     #[test]
     fn test_memory_index() {
         let mut assembler = default_assembler();
+
+        let a = 10;
+        let token_iter = vec!["100"];
+        let tokens = TokenIter::new(token_iter.iter().copied());
 
         let source = SourceCode::new("100".to_string());
         let mut tokens = source.tokens();

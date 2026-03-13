@@ -2,5 +2,5 @@ use crate::{
     assembler::Assembler,
     tokens::{Register, Token, TokenIter},
 };
-use anyhow::{anyhow, bail, Context, Result};
+use anyhow::{Context, Result, anyhow, bail};
 use spdlog::prelude::*;

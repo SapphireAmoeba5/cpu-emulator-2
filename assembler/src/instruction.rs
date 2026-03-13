@@ -23,7 +23,6 @@ pub enum Mnemonic {
     Halt,
     Mov,
 
-
     MovU8,
     MovU16,
     MovU32,
@@ -146,7 +145,6 @@ pub enum Mnemonic {
     CmovncU32,
     CmovncU64,
 
-
     Cmovo,
     CmovoU8,
     CmovoU16,
@@ -158,7 +156,6 @@ pub enum Mnemonic {
     CmovnoU16,
     CmovnoU32,
     CmovnoU64,
-
 
     Cmovs,
     CmovsU8,
@@ -172,7 +169,6 @@ pub enum Mnemonic {
     CmovnsU32,
     CmovnsU64,
 
-
     Cmova,
     CmovaU8,
     CmovaU16,
@@ -184,7 +180,6 @@ pub enum Mnemonic {
     CmovbeU16,
     CmovbeU32,
     CmovbeU64,
-
 
     Cmovg,
     CmovgU8,
@@ -198,7 +193,6 @@ pub enum Mnemonic {
     CmovleU32,
     CmovleU64,
 
-    
     Cmovge,
     CmovgeU8,
     CmovgeU16,
@@ -210,7 +204,6 @@ pub enum Mnemonic {
     CmovlU16,
     CmovlU32,
     CmovlU64,
-
 
     Call,
     Ret,

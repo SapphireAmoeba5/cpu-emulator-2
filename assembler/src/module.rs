@@ -79,7 +79,7 @@ fn evaluate_expression(
                 left_symbol
             } else if left_symbol.is_empty() && !right_symbol.is_empty() {
                 if *op == BinaryOp::Sub {
-                    return Err(anyhow!("Cannot subtract a relocatable symbol"))
+                    return Err(anyhow!("Cannot subtract a relocatable symbol"));
                 }
                 right_symbol
             }

@@ -1,5 +1,7 @@
+use std::iter::Peekable;
+
 use crate::{
-    assembler::Assembler,
+    assembler::{AsmTokenIter, Assembler},
     expression::parse_expr,
     section::Section,
     tokens::{Directive, Token, TokenIter},
@@ -8,10 +10,10 @@ use anyhow::{Context, Result, anyhow};
 use spdlog::debug;
 
 impl Assembler {
-    pub(super) fn parse_directive(
+    pub(super) fn parse_directive<'a>(
         &mut self,
         directive: Directive,
-        tokens: &mut TokenIter,
+        tokens: &mut Peekable<impl AsmTokenIter<'a>>,
     ) -> Result<()> {
         match directive {
             Directive::Section => self.parse_section_directive(tokens),
@@ -25,20 +27,24 @@ impl Assembler {
         }
     }
 
-    pub(super) fn parse_section_directive(&mut self, tokens: &mut TokenIter) -> Result<()> {
-        let section_name = tokens
-            .next()?
-            .context("Expected section name but found EOF")?;
+    pub(super) fn parse_section_directive<'a>(
+        &mut self,
+        tokens: &mut Peekable<impl AsmTokenIter<'a>>,
+    ) -> Result<()> {
+        let section_name = &tokens
+            .next()
+            .context("Expected section name but found EOF")?
+            .token;
 
         match section_name {
             Token::Identifier(identifier) => {
-                let section = match self.section_map.get(&identifier) {
+                let section = match self.section_map.get(identifier) {
                     Some(section) => *section,
                     None => {
                         let index = self.sections.len();
                         let section = Section::new(identifier.clone());
                         self.sections.push(section);
-                        self.section_map.insert(identifier, index);
+                        self.section_map.insert(identifier.clone(), index);
                         index
                     }
                 };
@@ -54,7 +60,10 @@ impl Assembler {
         }
     }
 
-    pub(super) fn parse_section_align(&mut self, tokens: &mut TokenIter) -> Result<()> {
+    pub(super) fn parse_section_align<'a>(
+        &mut self,
+        tokens: &mut Peekable<impl AsmTokenIter<'a>>,
+    ) -> Result<()> {
         let expr = parse_expr(tokens)?;
         let align = self.evaluate_non_operand_expression(&expr)?;
 
@@ -72,11 +81,14 @@ impl Assembler {
         Ok(())
     }
 
-    pub(super) fn parse_skip(&mut self, tokens: &mut TokenIter) -> Result<()> {
+    pub(super) fn parse_skip<'a>(
+        &mut self,
+        tokens: &mut Peekable<impl AsmTokenIter<'a>>,
+    ) -> Result<()> {
         let expr = parse_expr(tokens)?;
         let skip_count = self.evaluate_non_operand_expression(&expr)?;
 
-        let fill_value: u8 = if let Some(Token::Comma) = tokens.peek()? {
+        let fill_value: u8 = if let Some(Token::Comma) = tokens.peek().map(|a| &a.token) {
             let _ = tokens.next();
             let fill_value_expr = parse_expr(tokens)?;
             self.evaluate_non_operand_expression(&fill_value_expr)? as u8
@@ -93,11 +105,17 @@ impl Assembler {
         Ok(())
     }
 
-    pub(super) fn parse_global_directive(&mut self, tokens: &mut TokenIter) -> Result<()> {
-        let symbol = tokens.next()?.context("Expected symbol but found EOF")?;
+    pub(super) fn parse_global_directive<'a>(
+        &mut self,
+        tokens: &mut Peekable<impl AsmTokenIter<'a>>,
+    ) -> Result<()> {
+        let symbol = &tokens
+            .next()
+            .context("Expected symbol but found EOF")?
+            .token;
 
         match symbol {
-            Token::Identifier(identifier) => self.global_symbols.push(identifier),
+            Token::Identifier(identifier) => self.global_symbols.push(identifier.clone()),
             _ => {
                 return Err(anyhow!(
                     "Espected identifier after .global but got {}",
@@ -109,7 +127,10 @@ impl Assembler {
         Ok(())
     }
 
-    pub(super) fn parse_embed_u8(&mut self, tokens: &mut TokenIter) -> Result<()> {
+    pub(super) fn parse_embed_u8<'a>(
+        &mut self,
+        tokens: &mut Peekable<impl AsmTokenIter<'a>>,
+    ) -> Result<()> {
         let expr = parse_expr(tokens)?;
         let value = self.evaluate_non_operand_expression(&expr)?;
 
@@ -119,7 +140,10 @@ impl Assembler {
         Ok(())
     }
 
-    pub(super) fn parse_embed_u16(&mut self, tokens: &mut TokenIter) -> Result<()> {
+    pub(super) fn parse_embed_u16<'a>(
+        &mut self,
+        tokens: &mut Peekable<impl AsmTokenIter<'a>>,
+    ) -> Result<()> {
         let expr = parse_expr(tokens)?;
         let value = self.evaluate_non_operand_expression(&expr)?;
 
@@ -129,7 +153,10 @@ impl Assembler {
         Ok(())
     }
 
-    pub(super) fn parse_embed_u32(&mut self, tokens: &mut TokenIter) -> Result<()> {
+    pub(super) fn parse_embed_u32<'a>(
+        &mut self,
+        tokens: &mut Peekable<impl AsmTokenIter<'a>>,
+    ) -> Result<()> {
         let expr = parse_expr(tokens)?;
         let value = self.evaluate_non_operand_expression(&expr)?;
 
@@ -139,7 +166,10 @@ impl Assembler {
         Ok(())
     }
 
-    pub(super) fn parse_embed_u64(&mut self, tokens: &mut TokenIter) -> Result<()> {
+    pub(super) fn parse_embed_u64<'a>(
+        &mut self,
+        tokens: &mut Peekable<impl AsmTokenIter<'a>>,
+    ) -> Result<()> {
         let expr = parse_expr(tokens)?;
         let value = self.evaluate_non_operand_expression(&expr)?;
 

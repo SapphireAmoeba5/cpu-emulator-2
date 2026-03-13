@@ -1,7 +1,10 @@
 use core::fmt;
-use std::{collections::{HashMap, hash_map::Entry}, ffi::os_str::Display};
+use std::{
+    collections::{HashMap, hash_map::Entry},
+    ffi::os_str::Display,
+};
 
-use anyhow::{anyhow, Result};
+use anyhow::{Result, anyhow};
 
 #[derive(Debug, Copy, Clone, Eq, PartialEq)]
 pub enum Type {
@@ -13,15 +16,15 @@ impl Type {
     fn as_str(&self) -> &'static str {
         match self {
             Type::Label => "Label",
-            Type::Constant => "Constant"
-        } 
+            Type::Constant => "Constant",
+        }
     }
 }
 
 impl fmt::Display for Type {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", self.as_str()) 
-     } 
+        write!(f, "{}", self.as_str())
+    }
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -42,7 +45,13 @@ impl SymbolTable {
             symbols: HashMap::new(),
         }
     }
-    pub fn insert_symbol(&mut self, id: String, value: u64, type_: Type, section: Option<usize>) -> Result<()> {
+    pub fn insert_symbol(
+        &mut self,
+        id: String,
+        value: u64,
+        type_: Type,
+        section: Option<usize>,
+    ) -> Result<()> {
         match self.symbols.entry(id) {
             Entry::Vacant(vacant) => {
                 vacant.insert(Symbol {

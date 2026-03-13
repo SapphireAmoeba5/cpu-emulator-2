@@ -1,3 +1,6 @@
+use std::iter::Peekable;
+
+use crate::assembler::AsmTokenIter;
 use crate::{
     TokenIter,
     tokens::{Register, Token},
@@ -35,9 +38,9 @@ impl BinaryOp {
     }
 }
 
-impl TryFrom<Token> for BinaryOp {
+impl TryFrom<&Token> for BinaryOp {
     type Error = ();
-    fn try_from(value: Token) -> std::result::Result<Self, Self::Error> {
+    fn try_from(value: &Token) -> std::result::Result<Self, Self::Error> {
         use BinaryOp::*;
         match value {
             Token::Plus => Ok(Add),
@@ -63,14 +66,21 @@ impl UnaryOp {
     }
 }
 
-impl TryFrom<Token> for UnaryOp {
+impl TryFrom<&Token> for UnaryOp {
     type Error = ();
-    fn try_from(value: Token) -> std::result::Result<Self, Self::Error> {
+    fn try_from(value: &Token) -> std::result::Result<Self, Self::Error> {
         use UnaryOp::*;
         match value {
             Token::Sub => Ok(Neg),
             _ => Err(()),
         }
+    }
+}
+
+impl TryFrom<Token> for UnaryOp {
+    type Error = ();
+    fn try_from(value: Token) -> std::result::Result<Self, Self::Error> {
+        UnaryOp::try_from(&value)
     }
 }
 
@@ -98,17 +108,20 @@ pub enum Node {
     Expression(Box<Self>),
 }
 
-pub fn parse_expr(tokens: &mut TokenIter) -> Result<Box<Node>> {
+pub fn parse_expr<'a>(tokens: &mut Peekable<impl AsmTokenIter<'a>>) -> Result<Box<Node>> {
     let mut left = parse_constant(tokens)?;
 
-    while let Some(token) = tokens.peek()? {
+    while let Some(token) = tokens.peek() {
+        let token = &token.token;
         let op: BinaryOp = match token.try_into() {
             Ok(op) => op,
             Err(_) => break,
         };
 
         // Consume the peeked token
-        let _ = tokens.next().unwrap().unwrap();
+        let _ = tokens
+            .next()
+            .expect("Token was peeked so this should always be Some. This is a bug");
 
         let right = parse_constant(tokens)?;
 
@@ -118,16 +131,20 @@ pub fn parse_expr(tokens: &mut TokenIter) -> Result<Box<Node>> {
     Ok(left)
 }
 
-fn parse_constant(tokens: &mut TokenIter) -> Result<Box<Node>> {
-    let node = match tokens.next()?.with_context(|| "Expected token")? {
-        Token::Number(num) => Node::Constant(num),
-        Token::Register(reg) => Node::Register(reg),
-        Token::Identifier(id) => Node::Identifier(id),
+fn parse_constant<'a>(tokens: &mut Peekable<impl AsmTokenIter<'a>>) -> Result<Box<Node>> {
+    let node = match &tokens.next().with_context(|| "Expected token")?.token {
+        Token::Number(num) => Node::Constant(*num),
+        Token::Register(reg) => Node::Register(*reg),
+        Token::Identifier(id) => Node::Identifier(id.clone()),
         Token::LBrace => {
             // tokens.next().unwrap().unwrap();
             let expr = parse_expr(tokens)?;
-            match tokens.next()? {
-                Some(Token::RBrace) => Node::Expression(expr),
+            match tokens
+                .next()
+                .with_context(|| "Expected token but found EOF")?
+                .token
+            {
+                Token::RBrace => Node::Expression(expr),
                 _ => return Err(anyhow!("Expected closing brace")),
             }
         }

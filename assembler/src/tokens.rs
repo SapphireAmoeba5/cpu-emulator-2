@@ -3,6 +3,7 @@ use crate::{
     opcode::OperandFlags,
 };
 use anyhow::{Context, Result, anyhow, bail};
+use core::fmt;
 use std::{
     fmt::Display,
     num::{IntErrorKind, ParseIntError},
@@ -203,32 +204,33 @@ pub enum Token {
     Newline,
 }
 
-impl ToString for Token {
-    fn to_string(&self) -> String {
-        match self {
-            Self::Mnemonic(instr) => String::from(instr.as_ref()),
-            Self::Register(register) => String::from(register.as_ref()),
-            Self::Identifier(id) => id.clone(),
-            Self::Directive(dir) => dir.as_ref().to_string(),
-            Self::Keyword(keyword) => keyword.as_ref().to_string(),
-            Self::Number(num) => num.to_string(),
-            Self::Equal => "=".to_string(),
-            Self::Comma => ",".to_string(),
-            Self::LBrace => "(".to_string(),
-            Self::RBrace => ")".to_string(),
-            Self::LSqrBrace => "[".to_string(),
-            Self::RSqrBrace => "]".to_string(),
-            Self::Plus => "+".to_string(),
-            Self::Sub => "-".to_string(),
-            Self::Mul => "*".to_string(),
-            Self::Div => "/".to_string(),
-            Self::Caret => "^".to_string(),
-            Self::Ampersand => "&".to_string(),
-            Self::AtSign => "@".to_string(),
-            Self::Colon => ":".to_string(),
-            Self::Dollar => "$".to_string(),
-            Self::Newline => "Newline".to_string(),
-        }
+impl fmt::Display for Token {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let value = match self {
+            Self::Mnemonic(instr) => instr.as_ref(),
+            Self::Register(register) => register.as_ref(),
+            Self::Identifier(id) => id,
+            Self::Directive(dir) => dir.as_ref(),
+            Self::Keyword(keyword) => keyword.as_ref(),
+            Self::Number(num) => &num.to_string(),
+            Self::Equal => "=",
+            Self::Comma => ",",
+            Self::LBrace => "(",
+            Self::RBrace => ")",
+            Self::LSqrBrace => "[",
+            Self::RSqrBrace => "]",
+            Self::Plus => "+",
+            Self::Sub => "-",
+            Self::Mul => "*",
+            Self::Div => "/",
+            Self::Caret => "^",
+            Self::Ampersand => "&",
+            Self::AtSign => "@",
+            Self::Colon => ":",
+            Self::Dollar => "$",
+            Self::Newline => "newline",
+        };
+        write!(f, "{value}")
     }
 }
 
@@ -237,6 +239,14 @@ impl Token {
         match self {
             Self::Identifier(id) => Some(id),
             _ => None,
+        }
+    }
+
+    pub fn as_identifier(&self) -> Option<&str> {
+        if let Self::Identifier(id) = self {
+            Some(&id)
+        } else {
+            None
         }
     }
 }
@@ -260,88 +270,32 @@ impl Token {
 }
 
 #[derive(Debug)]
-pub struct TokenIter<'a> {
-    lexer: Lexer<'a>,
+pub struct TokenIter<'a, T: Iterator<Item = &'a str>> {
+    lexer: T,
 }
 
-impl<'a> TokenIter<'a> {
-    pub fn new(lexer: Lexer<'a>) -> Self {
-        Self { lexer }
-    }
+impl<'a, T: Iterator<Item = &'a str>> Iterator for TokenIter<'a, T> {
+    type Item = Result<Token>;
 
-    /// Skips all tokens until the next newline or None
-    pub fn skip_line(&mut self) {
-        while let Some(next) = self.lexer.next() {
-            if next == "\n" {
-                break;
-            }
-        }
-        // Loop until the next token is Ok(None)
-        // loop {
-        //     if let Ok(next) = self.next() {
-        //         if let Some(next) = next {
-        //             if next.is_newline() {
-        //                 break;
-        //             }
-        //         } else {
-        //             break;
-        //         }
-        //     }
-        // }
-    }
-    /// Returns Ok(()) if the next token is a newline or None
-    pub fn newline_or_eof(&mut self) -> Result<()> {
-        self.next()?.map_or(Ok(()), |token| {
-            if token.is_newline() {
-                Ok(())
-            } else {
-                Err(anyhow!("Expected newline or end of file"))
-            }
-        })
-    }
-
-    pub fn is_comma(&mut self) -> Result<()> {
-        self.next()?.map_or(Ok(()), |token| {
-            if token.is_comma() {
-                Ok(())
-            } else {
-                Err(anyhow!("Expected comma"))
-            }
-        })
-    }
-
-    pub fn is_equal_sign(&mut self) -> Result<()> {
-        self.next()?.map_or(Ok(()), |token| {
-            if token.is_equal_sign() {
-                Ok(())
-            } else {
-                Err(anyhow!("Expected equal sign"))
-            }
-        })
-    }
-
-    pub fn next(&mut self) -> Result<Option<Token>> {
-        if let Some(token) = self.lexer.next() {
+    fn next(&mut self) -> Option<Self::Item> {
+        let token = if let Some(token) = self.lexer.next() {
             Self::parse_token(token)
         } else {
-            Ok(None)
+            None
+        };
+
+        token
+    }
+}
+
+impl<'a, T: Iterator<Item = &'a str>> TokenIter<'a, T> {
+    pub fn new(lexer: T) -> Self {
+        Self {
+            lexer,
         }
     }
 
-    pub fn peek(&mut self) -> Result<Option<Token>> {
-        if let Some(token) = self.lexer.peek() {
-            Self::parse_token(token)
-        } else {
-            Ok(None)
-        }
-    }
-
-    /// Returns the line of the last token gotten from next()
-    pub fn line(&self) -> usize {
-        self.lexer.line()
-    }
-
-    fn parse_token(token: &str) -> Result<Option<Token>> {
+    fn parse_token(token: &str) -> Option<Result<Token>> {
         let token = if let Some(instruction) = Self::instruction(token) {
             Token::Mnemonic(instruction)
         } else if let Some(register) = Self::register(token) {
@@ -354,13 +308,13 @@ impl<'a> TokenIter<'a> {
             token
         } else if token == "\n" {
             Token::Newline
-        } else if let Some(number) = Self::number(token)? {
-            Token::Number(number)
+        } else if let Some(number) = Self::number(token) {
+            // Early return here to avoid a big match statement
+            return Some(number.map(Token::Number));
         } else {
             Token::Identifier(token.to_string())
         };
-
-        Ok(Some(token))
+        Some(Ok(token))
     }
 
     fn special_character(token: &str) -> Option<Token> {
@@ -644,25 +598,25 @@ impl<'a> TokenIter<'a> {
     }
 
     /// Tries to parse a number
-    fn number(token: &str) -> Result<Option<u64>> {
+    fn number(token: &str) -> Option<Result<u64>> {
         if !token.starts_with(|ch: char| ch.is_ascii_digit()) {
-            Ok(None)
+            None
         } else if token.starts_with("0x") && token.len() >= 3 {
             match u64::from_str_radix(&token[2..], 16) {
-                Ok(num) => Ok(Some(num)),
+                Ok(num) => Some(Ok(num)),
                 Err(e) => match e.kind() {
-                    IntErrorKind::PosOverflow => Err(anyhow!("Number {token} is too large")),
-                    IntErrorKind::NegOverflow => Err(anyhow!("Number {token} is too small")),
+                    IntErrorKind::PosOverflow => Some(Err(anyhow!("Number {token} is too large"))),
+                    IntErrorKind::NegOverflow => Some(Err(anyhow!("Number {token} is too small"))),
                     IntErrorKind::InvalidDigit => {
-                        Err(anyhow!("Number {token} contains an invalid digit"))
+                        Some(Err(anyhow!("Number {token} contains an invalid digit")))
                     }
-                    _ => Err(anyhow!("Invalid number {token}")),
+                    _ => Some(Err(anyhow!("Invalid number {token}"))),
                 },
             }
         } else {
             match token.parse::<i64>().map(|value| value as u64) {
-                Ok(num) => Ok(Some(num)),
-                Err(_) => Err(anyhow!("Invalid number {token}")),
+                Ok(num) => Some(Ok(num)),
+                Err(_) => Some(Err(anyhow!("Invalid number {token}"))),
             }
         }
     }
