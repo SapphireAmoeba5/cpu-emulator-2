@@ -24,7 +24,7 @@ use crate::operand;
 use crate::section::{self, Section};
 pub use emit::calculate_disp32_offset;
 
-use super::assembler_source::*;
+use super::lexer::*;
 use super::tokens::*;
 
 use anyhow::{Context, Result};

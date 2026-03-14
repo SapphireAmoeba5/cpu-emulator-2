@@ -1,5 +1,5 @@
 mod assembler;
-mod assembler_source;
+mod lexer;
 mod expression;
 mod instruction;
 mod linker;
@@ -19,7 +19,7 @@ use std::{
 
 use crate::{
     assembler::{Assembler, emit::PREFIX_BYTE},
-    assembler_source::Lexer,
+    lexer::Lexer,
     instruction::Mnemonic,
     linker::{Instr, link},
     module::Module,

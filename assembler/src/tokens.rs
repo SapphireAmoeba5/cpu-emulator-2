@@ -7,7 +7,7 @@ use std::{
 };
 use strum::{AsRefStr, IntoStaticStr};
 
-use super::assembler_source::Lexer;
+use super::lexer::Lexer;
 
 /// There are 16 general purpose registers.
 /// Garunteed for the register index to be between 0..=15
