@@ -54,49 +54,64 @@ impl<'a> Iterator for Lexer<'a> {
 
         while let Some((i, ch)) = iter.next() {
             if Self::is_seperator_char(ch) {
-                // The current token is the seperator char so we
-                // do different logic
-                if self.current == i {
-                    final_index = i + 1;
+                // The current token is everything before the seperator char
+                if self.current != i {
+                    final_index = i;
                     break;
                 }
-                // The current token is everything before the seperator char
+                // The current token is the seperator char
                 else {
-                    final_index = i;
+                    final_index = i + 1;
                     break;
                 }
             } else if ch.is_whitespace() {
                 if self.current != i {
                     final_index = i;
                     break;
-                } else {
-                    self.current = i + 1;
                 }
+
+                self.current = i + 1;
+            } else if ch == '"' || ch == '\'' {
+                if self.current != i {
+                    final_index = i;
+                    break;
+                }
+
+                let opening_quote_type = ch;
+
+                while let Some((i, ch)) = iter.next() {
+                    final_index = i;
+                    if ch == opening_quote_type {
+                        break;
+                    }
+                }
+
+                final_index += 1;
+                break;
             } else if ch == ';' {
                 // Return the token before the comment
                 if self.current != i {
                     final_index = i;
                     break;
-                } 
+                }
                 // The current token is the ';' character, we need to skip everything up to the
                 // next newline or EOF
-                else {
-                    while let Some((_, ch)) = iter.peek()
-                        && *ch != '\n'
-                    {
-                        _ = iter.next();
-                    }
+                while let Some((_, ch)) = iter.peek()
+                    && *ch != '\n'
+                {
+                    _ = iter.next();
+                }
 
-                    if let Some((newline_index, ch)) = iter.next()
-                        && ch == '\n'
-                    {
-                        self.current = newline_index;
-                        final_index = newline_index + 1;
-                    } else {
-                        // The comment extended to EOF, so we set `self.current`
-                        // to `self.source.len()`
-                        self.current = self.source.len();
-                    }
+                if let Some((newline_index, ch)) = iter.next()
+                    && ch == '\n'
+                {
+                    self.current = newline_index;
+                    final_index = newline_index + 1;
+                    break;
+                } else {
+                    // The comment extended to EOF, so we set `self.current`
+                    // to `self.source.len()`
+                    self.current = self.source.len();
                     break;
                 }
             }
@@ -139,6 +154,9 @@ mod tests {
         let lexed = lex("1 + 2+      3\n");
         assert_eq!(lexed, &["1", "+", "2", "+", "3", "\n"]);
 
+        let lexed = lex("1+2+3\n");
+        assert_eq!(lexed, &["1", "+", "2", "+", "3", "\n"]);
+
         let lexed = lex("      test\n        ");
         assert_eq!(lexed, &["test", "\n"]);
     }
@@ -153,5 +171,39 @@ mod tests {
 
         let lexed = lex("Test ; This is a comment\nTest2");
         assert_eq!(lexed, &["Test", "\n", "Test2"]);
+
+        let lexed = lex("Test;This is a comment\nTest2");
+        assert_eq!(lexed, &["Test", "\n", "Test2"]);
+    }
+
+    #[test]
+    fn test_string() {
+        let lexed = lex("test \"This is a string\"");
+        assert_eq!(lexed, &["test", "\"This is a string\""]);
+
+        let lexed = lex("test \"This is a string\"\n");
+        assert_eq!(lexed, &["test", "\"This is a string\"", "\n"]);
+
+        let lexed = lex("test \"This is a string\"\nafter the string");
+        assert_eq!(
+            lexed,
+            &[
+                "test",
+                "\"This is a string\"",
+                "\n",
+                "after",
+                "the",
+                "string"
+            ]
+        );
+
+        let lexed = lex("Testing single quote 'string'");
+        assert_eq!(lexed, &["Testing", "single", "quote", "'string'"]);
+
+        let lexed = lex("Testing single quote 'string'\n");
+        assert_eq!(lexed, &["Testing", "single", "quote", "'string'", "\n"]);
+
+        let lexed = lex("Testing 'single' quote 's'\n");
+        assert_eq!(lexed, &["Testing", "'single'", "quote", "'s'", "\n"]);
     }
 }
