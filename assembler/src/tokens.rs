@@ -1,7 +1,4 @@
-use crate::{
-    instruction::{Mnemonic, Operand},
-    opcode::OperandFlags,
-};
+use crate::{instruction::Mnemonic, opcode::OperandFlags};
 use anyhow::{Context, Result, anyhow, bail};
 use core::fmt;
 use std::{
@@ -251,24 +248,6 @@ impl Token {
     }
 }
 
-impl Token {
-    pub fn is_comma(&self) -> bool {
-        matches!(self, Self::Comma)
-    }
-
-    pub fn is_equal_sign(&self) -> bool {
-        matches!(self, Self::Equal)
-    }
-
-    pub fn is_newline(&self) -> bool {
-        matches!(self, Self::Newline)
-    }
-
-    pub fn is_number(&self) -> bool {
-        matches!(self, Self::Number(_))
-    }
-}
-
 #[derive(Debug)]
 pub struct TokenIter<'a, T: Iterator<Item = &'a str>> {
     lexer: T,
@@ -290,9 +269,7 @@ impl<'a, T: Iterator<Item = &'a str>> Iterator for TokenIter<'a, T> {
 
 impl<'a, T: Iterator<Item = &'a str>> TokenIter<'a, T> {
     pub fn new(lexer: T) -> Self {
-        Self {
-            lexer,
-        }
+        Self { lexer }
     }
 
     fn parse_token(token: &str) -> Option<Result<Token>> {

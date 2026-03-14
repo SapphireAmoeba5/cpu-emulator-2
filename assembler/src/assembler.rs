@@ -628,7 +628,7 @@ impl Assembler {
         let iter = TokenIter::new(lexer);
 
         let mut current_line = 1usize;
-        let tokens: Vec<AssemblerToken> = iter
+        let tokens: Vec<AssemblerToken> = match iter
             .map(|token| match token {
                 Ok(token) => {
                     if let Token::Newline = token {
@@ -642,7 +642,11 @@ impl Assembler {
                 }
                 Err(e) => Err(e),
             })
-            .collect::<Result<_>>()?;
+            .collect::<Result<_>>()
+        {
+            Ok(vec) => vec,
+            Err(e) => bail!("Error {}:{current_line}\n\t{e}", assembler.filename),
+        };
 
         let mut token_iter = tokens.iter().peekable();
 

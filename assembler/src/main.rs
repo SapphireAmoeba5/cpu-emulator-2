@@ -33,7 +33,7 @@ use clap::Parser;
 struct Args {
     #[clap(required_unless_present = "map")]
     input: Vec<String>,
-    #[arg(short, long, required_unless_present = "map", default_value_t = String::new())]
+    #[arg(short, long, required_unless_present = "map", default_value_t = String::from("out"))]
     output: String,
 
     #[clap(long, default_value_t = false)]
