@@ -238,6 +238,7 @@ impl ExprResult {
     }
 }
 
+#[derive(Debug)]
 pub struct Assembler {
     pub filename: String,
     pub symbols: SymbolTable,
@@ -1001,6 +1002,11 @@ impl Assembler {
 mod tests {
     use std::hash::Hash;
 
+    /// Easily turn an &str into an owned string without much typing
+    fn s(source: &str) -> String {
+        source.to_string()
+    }
+
     use super::*;
 
     fn default_assembler() -> Assembler {
@@ -1017,7 +1023,22 @@ mod tests {
     }
 
     #[test]
-    fn test_something() {}
+    fn test_assembler() {
+        let source = s("
+        .section .entry
+        const value = 10
+        mov r0, value
+        ");
+
+        let _ = Assembler::assemble(s("test"), source).unwrap();
+
+        let source = s("
+        const value = 10
+        mov r0, value
+        ");
+
+        let _ = Assembler::assemble(s("test"), source).unwrap_err();
+    }
 
     #[test]
     fn test_memory_index() {

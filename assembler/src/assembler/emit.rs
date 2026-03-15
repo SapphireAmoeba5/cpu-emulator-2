@@ -547,3 +547,14 @@ impl Assembler {
         Ok(size)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_emit() {
+        let source = ".section .entry\nconst value = 10\nmov r0, value".to_string();
+        let assembler = Assembler::assemble("test".to_string(), source).expect("This should assemble properly");
+    }
+}
