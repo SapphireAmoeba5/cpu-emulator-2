@@ -6,7 +6,7 @@ use crate::{
     section::Section,
     tokens::{Directive, Token, TokenIter},
 };
-use anyhow::{Context, Result, anyhow};
+use anyhow::{Context, Result, anyhow, bail};
 use spdlog::debug;
 
 impl Assembler {
@@ -65,7 +65,11 @@ impl Assembler {
         tokens: &mut Peekable<impl AsmTokenIter<'a>>,
     ) -> Result<()> {
         let expr = parse_expr(tokens)?;
-        let align = self.evaluate_non_operand_expression(&expr)?;
+        let (align, relocation) = self.evaluate_non_operand_expression(&expr)?;
+
+        if relocation {
+            bail!("Cannot align using a relocatable symbol");
+        }
 
         let section = self.get_section_mut()?;
 
@@ -86,12 +90,20 @@ impl Assembler {
         tokens: &mut Peekable<impl AsmTokenIter<'a>>,
     ) -> Result<()> {
         let expr = parse_expr(tokens)?;
-        let skip_count = self.evaluate_non_operand_expression(&expr)?;
+        let (skip_count, relocation) = self.evaluate_non_operand_expression(&expr)?;
+
+        if relocation {
+            bail!("The amount to fill cannot reference a relocatable symbol");
+        }
 
         let fill_value: u8 = if let Some(Token::Comma) = tokens.peek().map(|a| &a.token) {
             let _ = tokens.next();
             let fill_value_expr = parse_expr(tokens)?;
-            self.evaluate_non_operand_expression(&fill_value_expr)? as u8
+            let (fill_value, relocation) = self.evaluate_non_operand_expression(&fill_value_expr)?;
+            if relocation {
+                bail!("The fill value cannot reference a relocatable symbol");
+            }
+            fill_value as u8
         } else {
             0
         };
@@ -132,10 +144,12 @@ impl Assembler {
         tokens: &mut Peekable<impl AsmTokenIter<'a>>,
     ) -> Result<()> {
         let expr = parse_expr(tokens)?;
-        let value = self.evaluate_non_operand_expression(&expr)?;
+        let (value, relocation) = self.evaluate_non_operand_expression(&expr)?;
+
+        // TODO: Relocation
 
         self.get_section_mut()?
-            .write_u8(value.try_into().context("Constant is too large")?);
+            .write_u8(value as u8);
 
         Ok(())
     }
@@ -145,10 +159,12 @@ impl Assembler {
         tokens: &mut Peekable<impl AsmTokenIter<'a>>,
     ) -> Result<()> {
         let expr = parse_expr(tokens)?;
-        let value = self.evaluate_non_operand_expression(&expr)?;
+        let (value, relocation) = self.evaluate_non_operand_expression(&expr)?;
+
+        // TODO: Relocation
 
         self.get_section_mut()?
-            .write_u16(value.try_into().context("Constant is too large")?);
+            .write_u16(value as u16);
 
         Ok(())
     }
@@ -158,10 +174,12 @@ impl Assembler {
         tokens: &mut Peekable<impl AsmTokenIter<'a>>,
     ) -> Result<()> {
         let expr = parse_expr(tokens)?;
-        let value = self.evaluate_non_operand_expression(&expr)?;
+        let (value, relocation) = self.evaluate_non_operand_expression(&expr)?;
+
+        // TODO: Relocation
 
         self.get_section_mut()?
-            .write_u32(value.try_into().context("Constant is too large")?);
+            .write_u32(value as u32);
 
         Ok(())
     }
@@ -171,7 +189,9 @@ impl Assembler {
         tokens: &mut Peekable<impl AsmTokenIter<'a>>,
     ) -> Result<()> {
         let expr = parse_expr(tokens)?;
-        let value = self.evaluate_non_operand_expression(&expr)?;
+        let (value, relocation) = self.evaluate_non_operand_expression(&expr)?;
+
+        // TODO: Relocation
 
         self.get_section_mut()?.write_u64(value);
 

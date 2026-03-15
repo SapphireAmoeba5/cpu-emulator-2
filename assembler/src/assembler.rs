@@ -6,6 +6,7 @@ use bitflags::Flag;
 use itertools::izip;
 
 use std::collections::HashMap;
+use std::f32::consts::E;
 use std::iter::Peekable;
 use std::ops::{Deref, DerefMut};
 use std::panic::resume_unwind;
@@ -50,26 +51,14 @@ pub trait AsmTokenIter<'a>: Iterator<Item = &'a AssemblerToken> {
 }
 impl<'a, T: Iterator<Item = &'a AssemblerToken>> AsmTokenIter<'a> for T {}
 
-fn get_operand_from_expr_result(result: ExprResult) -> (Operand, OperandFlags) {
-    match result.type_ {
-        ExprType::Register => {
-            let mut operand = result.register.get_operand_flag();
+fn get_operand_from_expr_result(is_label: bool, _relocatable: bool) -> OperandFlags {
+    let operand = if is_label {
+        operand!(DISP)
+    } else {
+        operand!(IMM | ADDR64 | DISP)
+    };
 
-            (Operand::Register(result.register), operand)
-        }
-        ExprType::Constant => {
-            let operand;
-
-            if result.is_label {
-                // TODO: If we ever implement non position independent machine code then we should
-                // check for it here
-                operand = operand!(DISP);
-            } else {
-                operand = operand!(IMM | ADDR64 | DISP)
-            }
-            (Operand::Constant(result.immediate), operand)
-        }
-    }
+    operand
 }
 
 #[derive(Debug, Copy, Clone)]
@@ -210,41 +199,39 @@ pub struct ForwardReferenceEntry {
     pub line_number: usize,
 }
 
-#[derive(Debug, Clone, Copy, Eq, PartialEq)]
-pub enum ExprType {
-    Constant,
-    Register,
+trait ForwardReferenceTable {
+    fn emit_forward_reference(&mut self, entry: ForwardReferenceEntry);
 }
 
-#[derive(Debug, Clone, Copy)]
-pub struct ExprResult {
-    type_: ExprType,
-    /// Is valid if `type_` is set to ExprType::Immediate
-    immediate: u64,
-    /// Is valid if `type_` is set to ExprType::Register
-    register: Register,
-    /// If the result of this expression is a label or memory offset
-    is_label: bool,
-    /// If the result would require a relocation
-    relocation: bool,
+impl ForwardReferenceTable for Vec<ForwardReferenceEntry> {
+    fn emit_forward_reference(&mut self, entry: ForwardReferenceEntry) {
+        self.push(entry);
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum ExprResult {
+    Constant {
+        constant: u64,
+        is_label: bool,
+        // If the symbol is negative, as opposed to just being a large u64 value
+        relocation: bool,
+    },
+    Register(Register),
 }
 
 impl ExprResult {
     pub fn new_imm(immediate: u64) -> Self {
-        Self {
-            type_: ExprType::Constant,
-            immediate,
-            register: Register::none(),
+        Self::Constant {
+            constant: immediate,
             is_label: false,
             relocation: false,
         }
     }
 
     pub fn new_reloc() -> Self {
-        Self {
-            type_: ExprType::Constant,
-            immediate: 0,
-            register: Register::none(),
+        Self::Constant {
+            constant: 0,
             is_label: false,
             relocation: true,
         }
@@ -275,13 +262,7 @@ impl Assembler {
     fn evaluate_expression(&self, expr: &Box<Node>, current_section: usize) -> Result<ExprResult> {
         match &**expr {
             Node::Constant(value) => Ok(ExprResult::new_imm(*value)),
-            Node::Register(register) => Ok(ExprResult {
-                type_: ExprType::Register,
-                immediate: 0,
-                register: *register,
-                is_label: false,
-                relocation: false,
-            }),
+            Node::Register(register) => Ok(ExprResult::Register(*register)),
             Node::Identifier(id) => {
                 // If the symbol isn't defined
                 let Some(symbol) = self.symbols.get_symbol(id) else {
@@ -291,32 +272,22 @@ impl Assembler {
                 // The symbol is a label
                 if let Some(section) = symbol.section_index {
                     if section == current_section {
-                        Ok(ExprResult {
-                            type_: ExprType::Constant,
-                            immediate: symbol.value,
-                            register: Register::none(),
+                        Ok(ExprResult::Constant {
+                            constant: symbol.value,
                             is_label: true,
                             relocation: false,
                         })
-                    } else {
-                        // The label exists in a different section
-                        Ok(ExprResult {
-                            type_: ExprType::Constant,
-                            immediate: 0,
-                            register: Register::none(),
+                    }
+                    // The label exists in a different section
+                    else {
+                        Ok(ExprResult::Constant {
+                            constant: 0,
                             is_label: true,
                             relocation: true,
                         })
                     }
                 } else {
-                    // The symbol is a constant
-                    Ok(ExprResult {
-                        type_: ExprType::Constant,
-                        immediate: symbol.value,
-                        register: Register::none(),
-                        is_label: false,
-                        relocation: false,
-                    })
+                    Ok(ExprResult::new_imm(symbol.value))
                 }
             }
             Node::Expression(expr) => self.evaluate_expression(expr, current_section),
@@ -324,61 +295,82 @@ impl Assembler {
                 let left = self.evaluate_expression(left, current_section)?;
                 let right = self.evaluate_expression(right, current_section)?;
 
-                if left.type_ == ExprType::Register || right.type_ == ExprType::Register {
-                    Err(anyhow!("Invalid operation on register"))
-                } else if left.relocation || right.relocation {
-                    Ok(ExprResult {
-                        type_: ExprType::Constant,
-                        immediate: 0,
-                        register: Register::none(),
-                        is_label: left.is_label | right.is_label,
-                        relocation: true,
-                    })
-                } else {
-                    let immediate = op.calculate(left.immediate, right.immediate);
-                    Ok(ExprResult {
-                        type_: ExprType::Constant,
-                        immediate,
-                        register: Register::none(),
-                        is_label: left.is_label | right.is_label,
-                        // Neither the left or right hand side are relocations so hardcode this to
-                        // false
-                        relocation: false,
-                    })
+                let ExprResult::Constant {
+                    constant: lhs_constant,
+                    is_label: lhs_is_label,
+                    relocation: lhs_relocation,
+                } = left
+                else {
+                    bail!("Invalid operation on a register")
+                };
+
+                let ExprResult::Constant {
+                    constant: rhs_constant,
+                    is_label: rhs_is_label,
+                    relocation: rhs_relocation,
+                } = right
+                else {
+                    bail!("Invalid operation on a register")
+                };
+
+                if *op == BinaryOp::Div && rhs_constant == 0 {
+                    bail!("Division by zero");
                 }
+
+                let result = op.calculate(lhs_constant, rhs_constant);
+
+                Ok(ExprResult::Constant {
+                    constant: result,
+                    is_label: lhs_is_label | rhs_is_label,
+                    relocation: lhs_relocation | rhs_relocation,
+                })
             }
 
             Node::UnaryOp { op, expr } => {
-                let operand = self.evaluate_expression(expr, current_section)?;
+                let result = self.evaluate_expression(expr, current_section)?;
 
-                if operand.type_ == ExprType::Register {
-                    Err(anyhow!("Invalid operation on register"))
-                } else {
-                    let immediate = op.calculate(operand.immediate);
-                    Ok(ExprResult {
-                        type_: operand.type_,
-                        immediate,
-                        register: Register::none(),
-                        is_label: operand.is_label,
-                        relocation: operand.relocation,
-                    })
+                let ExprResult::Constant {
+                    constant,
+                    is_label,
+                    relocation,
+                } = result
+                else {
+                    bail!("Invalid operation on a register");
+                };
+
+                if is_label {
+                    bail!("Cannot perform this operation on a label");
                 }
+
+                let constant = op.calculate(constant);
+
+                Ok(ExprResult::Constant {
+                    constant,
+                    is_label,
+                    relocation,
+                })
             }
         }
     }
 
-    fn evaluate_non_operand_expression(&self, expr: &Box<Node>) -> Result<u64> {
+    /// Returns a tuple of the result of the expression, and whether a relocation needs to be
+    /// emitted
+    fn evaluate_non_operand_expression(&self, expr: &Box<Node>) -> Result<(u64, bool)> {
         let result = self.evaluate_expression(expr, Self::NO_SECTION)?;
 
-        if result.is_label {
-            return Err(anyhow!("Cannot use labels here"));
-        } else if result.relocation {
-            return Err(anyhow!("Cannot use undefined symbols here"));
-        }
-
-        match result.type_ {
-            ExprType::Register => Err(anyhow!("Cannot use registers here")),
-            ExprType::Constant => Ok(result.immediate),
+        match result {
+            ExprResult::Register(_) => bail!("Invalid use of register"),
+            ExprResult::Constant {
+                constant,
+                is_label,
+                relocation,
+            } => {
+                if is_label {
+                    bail!("Invalid use of label");
+                } else {
+                    Ok((constant, relocation))
+                }
+            }
         }
     }
 
@@ -661,6 +653,7 @@ impl Assembler {
         let mut success = true;
 
         while let Some(token) = token_iter.next() {
+            self.current_line = token.line;
             if let Err(e) = self.parse_token(&token, token_iter) {
                 println!("Error {}:{}:\n\t{e}", self.filename, token.line);
                 success = false;
@@ -895,30 +888,38 @@ impl Assembler {
                     {
                         *operand_expr = Some(expr);
                         num_operands += 1;
-                        *reloc_needed = result.relocation;
+                        *reloc_needed = if let ExprResult::Constant { relocation, .. } = result {
+                            relocation
+                        } else {
+                            false
+                        };
 
-                        if !matches!(flag_override, FlagOverride::None)
-                            && matches!(result.type_, ExprType::Register)
-                        {
-                            return Err(anyhow!(
-                                "Cannont use operand type specifiers with registers"
-                            ));
-                        }
-
-                        (*operand, *op_type) = match flag_override {
-                            FlagOverride::None => get_operand_from_expr_result(result),
-                            FlagOverride::Constant => {
-                                (Operand::Constant(result.immediate), operand!(IMM))
+                        (*operand, *op_type) = match result {
+                            ExprResult::Register(register) => {
+                                if flag_override != FlagOverride::None {
+                                    bail!("Cannot use operand type specifiers with registers");
+                                } else {
+                                    (Operand::Register(register), register.get_operand_flag())
+                                }
                             }
-                            FlagOverride::Memory => {
-                                (Operand::Constant(result.immediate), operand!(ADDR | DISP))
-                            }
-                            FlagOverride::Addr => {
-                                (Operand::Constant(result.immediate), operand!(ADDR))
-                            }
-                            FlagOverride::Offset => {
-                                (Operand::Constant(result.immediate), operand!(DISP))
-                            }
+                            // If it is an ExprResult::Constant we return a tuple containing
+                            // (Operand::Constant(constant), {OPERAND_FLAGS})
+                            ExprResult::Constant {
+                                constant,
+                                is_label,
+                                relocation,
+                            } => (
+                                Operand::Constant(constant),
+                                match flag_override {
+                                    FlagOverride::None => {
+                                        get_operand_from_expr_result(is_label, relocation)
+                                    }
+                                    FlagOverride::Constant => operand!(IMM),
+                                    FlagOverride::Memory => operand!(ADDR | DISP),
+                                    FlagOverride::Addr => operand!(ADDR),
+                                    FlagOverride::Offset => operand!(DISP),
+                                },
+                            ),
                         };
                     } else {
                         return Err(anyhow!("Too many operands. Max is {MAX_OPERANDS}"));
@@ -985,17 +986,14 @@ impl Assembler {
         }
 
         let expr = parse_expr(tokens)?;
-        let value = self.evaluate_expression(&expr, Self::NO_SECTION)?;
-        if value.relocation || value.is_label || value.type_ != ExprType::Constant {
-            return Err(anyhow!("Invalid expression for constant"));
-        }
+        let (value, relocation) = self.evaluate_non_operand_expression(&expr)?;
 
         if !tokens.is_newline_or_eof() {
             bail!("Expected a newline or EOF");
         }
 
         self.symbols
-            .insert_symbol(name, value.immediate, Type::Constant, None)
+            .insert_symbol(name, value, Type::Constant, None)
     }
 }
 

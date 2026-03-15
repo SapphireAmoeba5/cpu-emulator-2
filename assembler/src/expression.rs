@@ -28,13 +28,23 @@ impl BinaryOp {
     /// Convienence function that will automatically perform the operation on `lhs` and `rhs` with
     /// wrapping semantics
     pub fn calculate(&self, lhs: u64, rhs: u64) -> u64 {
-        match self {
-            BinaryOp::Add => lhs.wrapping_add(rhs),
-            BinaryOp::Sub => lhs.wrapping_sub(rhs),
-            BinaryOp::Mul => lhs.wrapping_mul(rhs),
-            BinaryOp::Div => (lhs as i64).wrapping_div(rhs as i64) as u64, // Do as signed division
-            BinaryOp::Xor => lhs ^ rhs,
-        }
+        self.overflowing_calculate(lhs, rhs).0
+    }
+    
+    /// Returns a tuple containing the result of the calculation, and a booleon of whether the
+    /// operation would result in signed overflow
+    pub fn overflowing_calculate(&self, lhs: u64, rhs: u64) -> (u64, bool) {
+        // Do the operations as if it was signed
+        let lhs = lhs as i64;
+        let rhs = rhs as i64;
+        let (result, overflow) = match self {
+            BinaryOp::Add => lhs.overflowing_add(rhs),
+            BinaryOp::Sub => lhs.overflowing_sub(rhs),
+            BinaryOp::Mul => lhs.overflowing_mul(rhs),
+            BinaryOp::Div => lhs.overflowing_div(rhs),
+            BinaryOp::Xor => (lhs ^ rhs, false),
+        };
+        (result as u64, overflow)
     }
 }
 

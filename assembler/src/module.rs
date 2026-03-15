@@ -49,9 +49,6 @@ fn evaluate_expression(
     expr: &Box<Node>,
 ) -> Result<(String, u64)> {
     let result = match &**expr {
-        // // This should have errored out earlier in the code
-        // Node::Register(_) => unreachable!(),
-
         // The values of registers are irrelevant, we only care about constant displacements
         Node::Register(_) => (String::new(), 0),
 
