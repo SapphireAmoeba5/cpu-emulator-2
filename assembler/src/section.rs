@@ -2,20 +2,6 @@ use std::num::NonZero;
 
 use crate::instruction::{Instruction, Operand};
 
-pub enum SectionData {
-    /// 1 byte inline data
-    U8(u8),
-    /// 2 byte inline data
-    U16(u16),
-    /// 4 byte inline data
-    U32(u32),
-    /// 8 byte inline data
-    U64(u64),
-    // Skips and reserves a set amount of bytes
-    Skip(u64),
-
-    Instruction(Instruction),
-}
 
 #[derive(Debug)]
 pub struct Section {
@@ -40,11 +26,6 @@ impl Section {
         let count = bytes.len();
         let copy = &mut self.data[offset..offset + count];
         copy.copy_from_slice(bytes);
-        // unsafe {
-        //     let count = bytes.len();
-        //     let place = self.data.as_mut_ptr().add(count)
-        //     std::ptr::copy_nonoverlapping(bytes as *const [u8], &raw mut self.data[offset..], count);
-        // }
     }
 
     pub fn write_u8(&mut self, byte: u8) {
