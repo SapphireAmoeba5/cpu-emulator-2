@@ -38,25 +38,10 @@ impl Assembler {
 
         match section_name {
             Token::Identifier(identifier) => {
-                let section = match self.section_map.get(identifier) {
-                    Some(section) => *section,
-                    None => {
-                        let index = self.sections.len();
-                        let section = Section::new(identifier.clone());
-                        self.sections.push(section);
-                        self.section_map.insert(identifier.clone(), index);
-                        index
-                    }
-                };
-
-                self.current_section = Some(section);
-
+                self.sections.set_section(identifier.as_str());
                 Ok(())
             }
-            other => Err(anyhow!(
-                "Expected identifier after .section but got {}",
-                other.to_string()
-            )),
+            other => bail!("Expected identifier after .section but got {}", other),
         }
     }
 
@@ -71,7 +56,7 @@ impl Assembler {
             bail!("Cannot align using a relocatable symbol");
         }
 
-        let section = self.get_section_mut()?;
+        let (_, section) = self.sections.get_section()?;
 
         if align > section.alignment {
             section.alignment = align;
@@ -99,7 +84,8 @@ impl Assembler {
         let fill_value: u8 = if let Some(Token::Comma) = tokens.peek().map(|a| &a.token) {
             let _ = tokens.next();
             let fill_value_expr = parse_expr(tokens)?;
-            let (fill_value, relocation) = self.evaluate_non_operand_expression(&fill_value_expr)?;
+            let (fill_value, relocation) =
+                self.evaluate_non_operand_expression(&fill_value_expr)?;
             if relocation {
                 bail!("The fill value cannot reference a relocatable symbol");
             }
@@ -108,7 +94,7 @@ impl Assembler {
             0
         };
 
-        let section = self.get_section_mut()?;
+        let (_, section) = self.sections.get_section()?;
 
         for _ in 0..skip_count {
             section.write_u8(fill_value);
@@ -148,8 +134,8 @@ impl Assembler {
 
         // TODO: Relocation
 
-        self.get_section_mut()?
-            .write_u8(value as u8);
+        let(_, section) = self.sections.get_section()?;
+        section.write_u8(value as u8);
 
         Ok(())
     }
@@ -163,8 +149,8 @@ impl Assembler {
 
         // TODO: Relocation
 
-        self.get_section_mut()?
-            .write_u16(value as u16);
+        let(_, section) = self.sections.get_section()?;
+        section.write_u16(value as u16);
 
         Ok(())
     }
@@ -178,8 +164,8 @@ impl Assembler {
 
         // TODO: Relocation
 
-        self.get_section_mut()?
-            .write_u32(value as u32);
+        let(_, section) = self.sections.get_section()?;
+        section.write_u32(value as u32);
 
         Ok(())
     }
@@ -193,7 +179,8 @@ impl Assembler {
 
         // TODO: Relocation
 
-        self.get_section_mut()?.write_u64(value);
+        let(_, section) = self.sections.get_section()?;
+        section.write_u64(value);
 
         Ok(())
     }

@@ -11,7 +11,6 @@ mod tokens;
 use std::{
     collections::{HashMap, btree_map::Entry},
     fs::{File, OpenOptions},
-    hash::Hash,
     io::Write,
     process::ExitCode,
     time::Instant,
@@ -19,7 +18,6 @@ use std::{
 
 use crate::{
     assembler::{Assembler, emit::PREFIX_BYTE},
-    lexer::Lexer,
     instruction::Mnemonic,
     linker::{Instr, link},
     module::Module,

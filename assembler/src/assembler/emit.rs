@@ -1,5 +1,5 @@
 use crate::{
-    assembler::{Assembler, Instruction, Operand},
+    assembler::{Assembler, ForwardReferenceEntry, Instruction, Operand},
     bit, encoding,
     opcode::{EncodingFlags, OperandFlags, Relocation},
     operand,
@@ -213,10 +213,6 @@ pub fn calculate_disp32_offset(pc: u64, addr: u64) -> Result<i32> {
 }
 
 impl Assembler {
-    fn get_section(&mut self) -> &mut Section {
-        self.get_section_mut().unwrap()
-    }
-
     /// Emits `instruction` into the current section's buffer
     ///
     /// `instruction.types[i]` should have only one bit set for each `i` up to
@@ -224,19 +220,19 @@ impl Assembler {
     pub(super) fn emit_instruction(&mut self, mut instruction: Instruction) -> Result<usize> {
         let options = instruction.encoding.options;
 
-        // Make sure we are inside a section before continuing
-        _ = self.get_section_mut()?;
+        let (section_id, section) = self.sections.get_section()?;
+        let line_number = self.current_line;
 
         // Used for getting the current size of the instruction
-        let start = self.get_section().cursor();
+        let start = section.cursor();
 
         if instruction.encoding.extension {
-            self.get_section().write_u8(EXTENSION_BYTE);
+            section.write_u8(EXTENSION_BYTE);
         }
 
         // Certain encoding branches I.E when the instruction has the `OPCODE_REG` flag set will
         // expect the opcode to be written here
-        self.get_section().write_u8(instruction.encoding.opcode);
+        section.write_u8(instruction.encoding.opcode);
 
         if options.intersects(EncodingFlags::DATA_TRANSFER) {
             // Maximum of two operands for any of these instructions
@@ -249,7 +245,7 @@ impl Assembler {
                 let src = instruction.operands[1].register();
 
                 let transfer_byte = reg_transfer_byte(dest.try_into()?, src.try_into()?);
-                self.get_section().write_u8(transfer_byte);
+                section.write_u8(transfer_byte);
             } else if instruction.types[1].intersects(OperandFlags::IMM) {
                 // Two operands that are a register, and an immediate are garunteed
                 let dest = instruction.operands[0].register();
@@ -258,10 +254,19 @@ impl Assembler {
                 let constant_size = if instruction.reloc[1] {
                     // Add plus one to the offset to account for the transfer byte we haven't
                     // written yet
-                    let offset = self.get_section().cursor() + 1;
-                    let expr = std::mem::replace(&mut instruction.exprs[1], None);
+                    let offset = section.cursor() + 1;
+                    let expr = std::mem::replace(&mut instruction.exprs[1], None)
+                        .expect("Expression should be some");
                     // Emit the relocation
-                    self.emit_relocation(Relocation::Abs64, offset, expr.unwrap());
+
+                    let entry = ForwardReferenceEntry::new(
+                        Relocation::Abs64,
+                        section_id,
+                        offset,
+                        expr,
+                        self.current_line,
+                    );
+                    self.forward_references.push(entry);
                     Size::U64
                 } else {
                     if src <= u8::MAX.into() {
@@ -276,13 +281,13 @@ impl Assembler {
                 };
 
                 let transfer_byte = imm_transfer_byte(dest.try_into()?, constant_size);
-                self.get_section().write_u8(transfer_byte);
+                section.write_u8(transfer_byte);
 
                 match constant_size {
-                    Size::U8 => self.get_section().write_u8(src as u8),
-                    Size::U16 => self.get_section().write_u16(src as u16),
-                    Size::U32 => self.get_section().write_u32(src as u32),
-                    Size::U64 => self.get_section().write_u64(src),
+                    Size::U8 => section.write_u8(src as u8),
+                    Size::U16 => section.write_u16(src as u16),
+                    Size::U32 => section.write_u32(src as u32),
+                    Size::U64 => section.write_u64(src),
                 }
             } else if instruction.types[1].intersects(OperandFlags::ADDR) {
                 let dest = instruction.operands[0].register();
@@ -290,17 +295,25 @@ impl Assembler {
 
                 if instruction.reloc[1] {
                     // Add one to account for the transfer byte
-                    let offset = self.get_section().cursor() + 1;
-                    let expr = std::mem::replace(&mut instruction.exprs[1], None);
-                    self.emit_relocation(Relocation::Abs64, offset, expr.unwrap());
+                    let offset = section.cursor() + 1;
+                    let expr = std::mem::replace(&mut instruction.exprs[1], None)
+                        .expect("Expression should be some");
+                    let entry = ForwardReferenceEntry::new(
+                        Relocation::Abs64,
+                        section_id,
+                        offset,
+                        expr,
+                        self.current_line,
+                    );
+                    self.forward_references.push(entry);
                 }
 
                 let size = get_memory_access_size(options);
 
                 let transfer_byte = const_addr_transfer_byte(dest.try_into()?, size);
 
-                self.get_section().write_u8(transfer_byte);
-                self.get_section().write_u64(src);
+                section.write_u8(transfer_byte);
+                section.write_u64(src);
             } else if instruction.types[1].intersects(OperandFlags::DISP32) {
                 let dest = instruction.operands[0].register();
                 let disp = instruction.operands[1].constant();
@@ -308,22 +321,20 @@ impl Assembler {
                 let memory_access_size = get_memory_access_size(options);
                 let transfer_byte = disp_transfer_byte(dest.try_into()?, memory_access_size);
 
-                self.get_section().write_u8(transfer_byte);
+                section.write_u8(transfer_byte);
 
                 let offset = if !instruction.reloc[1] {
                     // Where the program counter will be when this instruction is executed
                     // We add the size of an i32 because the displacement is encoded as a 4 byte
                     // i32 integer
-                    let pc: u64 = (self.get_section().cursor() + size_of::<i32>())
-                        .try_into()
-                        .unwrap();
+                    let pc: u64 = (section.cursor() + size_of::<i32>()) as u64;
 
                     let offset = calculate_disp32_offset(pc, disp)?;
 
                     debug!(
                         "Calculated offset {:#x} to {}+{:#x}",
                         offset,
-                        self.get_section().name,
+                        section.name,
                         pc as i64 + offset as i64
                     );
 
@@ -331,12 +342,19 @@ impl Assembler {
                 } else {
                     // `expr` should always be Some
                     let expr = std::mem::replace(&mut instruction.exprs[1], None).unwrap();
-                    let cursor = self.get_section().cursor();
-                    self.emit_relocation(Relocation::PC32, cursor, expr);
+                    let cursor = section.cursor();
+                    let entry = ForwardReferenceEntry::new(
+                        Relocation::PC32,
+                        section_id,
+                        cursor,
+                        expr,
+                        line_number,
+                    );
+                    self.forward_references.push(entry);
                     0
                 };
 
-                self.get_section().write_u32(offset as u32);
+                section.write_u32(offset as u32);
             } else if instruction.types[1].intersects(OperandFlags::INDEX) {
                 let dest = instruction.operands[0].register();
                 let mut memory_index = instruction.indexes[1];
@@ -375,7 +393,7 @@ impl Assembler {
                 // Stack pointer based addressing.
                 if memory_index.base.is_sp() {
                     let trsnfr = sp_rel_transfer_byte(dest.try_into()?, size);
-                    self.get_section().write_u8(trsnfr);
+                    section.write_u8(trsnfr);
 
                     // We don't write this byte right after this statement because the 4byte/2byte
                     // flag hasn't been set to the correct value until we figure out the minimum size of
@@ -401,27 +419,30 @@ impl Assembler {
                         // We set this bit to one to signal to the CPU that this instruction has a
                         // two byte displacement
                         sp_byte |= bit!(1);
-                        self.get_section().write_u8(sp_byte);
+                        section.write_u8(sp_byte);
 
-                        self.get_section().write_u16(disp as u16);
+                        section.write_u16(disp as u16);
                     } else if let Ok(disp) = i32::try_from(memory_index.disp as i64) {
-                        self.get_section().write_u8(sp_byte);
+                        section.write_u8(sp_byte);
                         if instruction.reloc[1] {
-                            let offset = self.get_section().cursor();
+                            let offset = section.cursor();
                             let expr = mem::replace(&mut instruction.exprs[1], None);
-                            self.emit_relocation(
+                            let entry = ForwardReferenceEntry::new(
                                 Relocation::Abs32S,
+                                section_id,
                                 offset,
                                 expr.expect("Expression should be some"),
+                                line_number,
                             );
+                            self.forward_references.push(entry);
                         }
-                        self.get_section().write_u32(disp as u32);
+                        section.write_u32(disp as u32);
                     } else {
                         return Err(anyhow!("Displacement out of range"));
                     }
                 } else if memory_index.base.is_valid() {
                     let byte = base_index_transfer_byte(dest.try_into()?, size);
-                    self.get_section().write_u8(byte);
+                    section.write_u8(byte);
 
                     let mut bis_byte = if memory_index.index.is_valid() {
                         if memory_index.index.is_gp() {
@@ -450,33 +471,36 @@ impl Assembler {
                         // We set this bit to one to signal to the CPU that this instruction has a
                         // two byte displacement
                         bis_byte |= bit!(1);
-                        self.get_section().write_u8(bis_byte);
+                        section.write_u8(bis_byte);
 
                         // We don't need to check if the register is a GP register because that
                         // would have already been done later
                         if memory_index.index.is_valid() {
-                            self.get_section().write_u8(base_index_byte);
+                            section.write_u8(base_index_byte);
                         }
 
-                        self.get_section().write_u16(disp as u16);
+                        section.write_u16(disp as u16);
                     } else if let Ok(disp) = i32::try_from(memory_index.disp as i64) {
-                        self.get_section().write_u8(bis_byte);
+                        section.write_u8(bis_byte);
 
                         if memory_index.index.is_valid() {
-                            self.get_section().write_u8(base_index_byte);
+                            section.write_u8(base_index_byte);
                         }
 
                         if instruction.reloc[1] {
-                            let offset = self.get_section().cursor();
+                            let offset = section.cursor();
                             let expr = mem::replace(&mut instruction.exprs[1], None);
-                            self.emit_relocation(
+                            let entry = ForwardReferenceEntry::new(
                                 Relocation::Abs32S,
+                                section_id,
                                 offset,
                                 expr.expect("Expression should be some"),
+                                line_number,
                             );
+                            self.forward_references.push(entry);
                         }
 
-                        self.get_section().write_u32(disp as u32);
+                        section.write_u32(disp as u32);
                     } else {
                         return Err(anyhow!("Displacement out of range"));
                     }
@@ -495,12 +519,19 @@ impl Assembler {
                         .context("Constant too large to fit in one byte")?;
 
                     if instruction.reloc[0] {
-                        let offset = self.get_section().cursor();
+                        let offset = section.cursor();
                         let expr = std::mem::replace(&mut instruction.exprs[0], None);
-                        self.emit_relocation(Relocation::Abs8, offset, expr.unwrap());
+                        let entry = ForwardReferenceEntry::new(
+                            Relocation::Abs8,
+                            section_id,
+                            offset,
+                            expr.expect("Expression should be some"),
+                            line_number,
+                        );
+                        self.forward_references.push(entry);
                     }
 
-                    self.get_section().write_u8(byte);
+                    section.write_u8(byte);
                 } else {
                     unreachable!("Invalid instruction template")
                 }
@@ -509,36 +540,44 @@ impl Assembler {
             let disp = instruction.operands[0].constant();
             let offset = if !instruction.reloc[0] {
                 // Where the program counter will be when this instruction is executed
-                let pc: u64 = (self.get_section().cursor() + 4).try_into().unwrap();
+                let pc: u64 = (section.cursor() + 4).try_into().unwrap();
                 let offset = calculate_disp32_offset(pc, disp)?;
                 debug!(
                     "Calculated offset {:#x} to {}+{:#x}",
                     offset,
-                    self.get_section().name,
+                    section.name,
                     pc as i64 + offset as i64
                 );
                 offset
             } else {
                 // `expr` should always be Some
-                let expr = std::mem::replace(&mut instruction.exprs[0], None).unwrap();
-                let cursor = self.get_section().cursor();
-                self.emit_relocation(Relocation::PC32, cursor, expr);
+                let expr = std::mem::replace(&mut instruction.exprs[0], None)
+                    .expect("Expression should be some");
+                let cursor = section.cursor();
+                let entry = ForwardReferenceEntry::new(
+                    Relocation::PC32,
+                    section_id,
+                    cursor,
+                    expr,
+                    line_number,
+                );
+                self.forward_references.push(entry);
                 0
             };
 
-            self.get_section().write_u32(offset as u32);
+            section.write_u32(offset as u32);
         } else if options.intersects(encoding!(OPCODE_REG)) {
             let reg = instruction.operands[0].register();
 
             // Instructions with the OPCODE_REG option has its register encoded as the last 4 bits
-            *self.get_section().data.last_mut().unwrap() |= reg.get_gp().unwrap();
+            *section.data.last_mut().unwrap() |= reg.get_gp().unwrap();
         } else if !options.is_empty() && instruction.operand_count == 0 {
             panic!("Invalid instruction")
         }
 
-        let position = self.get_section().cursor();
+        let position = section.cursor();
 
-        let size = self.get_section().cursor() - start;
+        let size = section.cursor() - start;
         debug!("Instruction size: {size}");
 
         // Instructions can't be bigger than 16 bytes
@@ -550,11 +589,18 @@ impl Assembler {
 
 #[cfg(test)]
 mod tests {
+    use crate::assembler;
+
     use super::*;
 
     #[test]
     fn test_emit() {
         let source = ".section .entry\nconst value = 10\nmov r0, value".to_string();
-        let assembler = Assembler::assemble("test".to_string(), source).expect("This should assemble properly");
+        let assembler =
+            Assembler::assemble("test".to_string(), source).expect("This should assemble properly");
+        assert_eq!(assembler.sections.len(), 1);
+
+        let (_, entry) = assembler.sections.get(".entry").unwrap();
+        assert_eq!(entry.data, &[0x30, 0x00, 0x0a]);
     }
 }

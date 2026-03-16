@@ -1,6 +1,6 @@
 use anyhow::{Context, Error, Result, anyhow};
 use spdlog::debug;
-use std::collections::{HashMap, hash_map::Entry};
+use std::{collections::{HashMap, hash_map::Entry}, rc::Rc};
 
 use crate::{
     assembler::{
@@ -78,7 +78,7 @@ pub fn link(modules: Vec<Module>, script: Vec<Instr>) -> Result<Program, ()> {
     }
 
     // This stores a list of all module and section indexes for each section
-    let mut section_map: HashMap<String, Vec<(usize, usize)>> = HashMap::new();
+    let mut section_map: HashMap<Rc<str>, Vec<(usize, usize)>> = HashMap::new();
     for (module_idx, module) in modules.iter().enumerate() {
         for (section_idx, section) in module.sections.iter().enumerate() {
             match section_map.entry(section.name.clone()) {
@@ -114,7 +114,7 @@ pub fn link(modules: Vec<Module>, script: Vec<Instr>) -> Result<Program, ()> {
                         }
                     }
                 } else {
-                    if let Some(sections) = section_map.get(section) {
+                    if let Some(sections) = section_map.get(section.as_str()) {
                         for (module_idx, section_idx) in sections.iter() {
                             let alignment = modules[*module_idx].sections[*section_idx].alignment;
                             add_section(

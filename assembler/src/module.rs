@@ -4,7 +4,7 @@ use crate::assembler::symbol_table::{self, SymbolTable};
 use crate::assembler::{self, Assembler};
 use crate::expression::{BinaryOp, Node};
 use crate::opcode::Relocation;
-use crate::section::Section;
+use crate::section::{Section, SectionMap};
 
 use anyhow::{Error, Result, anyhow};
 
@@ -129,8 +129,7 @@ pub struct Module {
     pub global_symbols: Vec<String>,
 
     pub relocations: Vec<RelocationEntry>,
-    pub sections: Vec<Section>,
-    pub section_map: HashMap<String, usize>,
+    pub sections: SectionMap,
 }
 
 impl TryFrom<Assembler> for Module {
@@ -183,7 +182,6 @@ impl TryFrom<Assembler> for Module {
 
             relocations,
             sections: value.sections,
-            section_map: value.section_map,
         })
     }
 }

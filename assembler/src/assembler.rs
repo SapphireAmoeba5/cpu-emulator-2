@@ -22,7 +22,7 @@ use crate::opcode::{
     EncodingFlags, InstEncoding, MAX_OPERANDS, OperandFlags, Relocation, get_encodings,
 };
 use crate::operand;
-use crate::section::{self, Section};
+use crate::section::{self, Section, SectionMap};
 pub use emit::calculate_disp32_offset;
 
 use super::lexer::*;
@@ -199,13 +199,21 @@ pub struct ForwardReferenceEntry {
     pub line_number: usize,
 }
 
-trait ForwardReferenceTable {
-    fn emit_forward_reference(&mut self, entry: ForwardReferenceEntry);
-}
-
-impl ForwardReferenceTable for Vec<ForwardReferenceEntry> {
-    fn emit_forward_reference(&mut self, entry: ForwardReferenceEntry) {
-        self.push(entry);
+impl ForwardReferenceEntry {
+    pub fn new(
+        relocation: Relocation,
+        section: usize,
+        offset: usize,
+        expr: Box<Node>,
+        line_number: usize,
+    ) -> Self {
+        Self {
+            relocation,
+            section,
+            offset,
+            expr,
+            line_number,
+        }
     }
 }
 
@@ -214,7 +222,6 @@ pub enum ExprResult {
     Constant {
         constant: u64,
         is_label: bool,
-        // If the symbol is negative, as opposed to just being a large u64 value
         relocation: bool,
     },
     Register(Register),
@@ -245,11 +252,8 @@ pub struct Assembler {
     pub global_symbols: Vec<String>,
 
     pub forward_references: Vec<ForwardReferenceEntry>,
-    /// Index of the current section being written to
-    current_section: Option<usize>,
-    pub sections: Vec<Section>,
-    /// Section name -> index into sections vec
-    pub section_map: HashMap<String, usize>,
+
+    pub sections: SectionMap,
 
     /// The current line number being parsed
     current_line: usize,
@@ -558,62 +562,21 @@ impl Assembler {
                 (result, relocation)
             }
             Node::Expression(expr) => self.evaluate_memory_index(expr, current_section)?,
-            _ => todo!(),
         };
 
         Ok((index, relocation))
-    }
-
-    pub fn emit_relocation(&mut self, relocation: Relocation, offset: usize, expr: Box<Node>) {
-        let section = self.current_section.unwrap();
-        let name: &str = relocation.into();
-        debug!(
-            "Emitting a {} relocation at {}+{offset:#x}",
-            name, self.sections[section].name
-        );
-        let entry = ForwardReferenceEntry {
-            relocation,
-            section,
-            offset,
-            expr,
-            line_number: self.current_line,
-        };
-
-        self.forward_references.push(entry);
-    }
-
-    fn get_section_mut(&mut self) -> Result<&mut Section> {
-        let section = self.get_section_index()?;
-        let section = self.sections.get_mut(section).unwrap();
-        Ok(section)
-    }
-
-    fn get_section_index(&self) -> Result<usize> {
-        if let Some(section) = self.current_section {
-            Ok(section)
-        } else {
-            Err(anyhow!(
-                "Section to place data not defined. Try doing .section {{section_name}} before your code"
-            ))
-        }
     }
 }
 
 impl Assembler {
     pub fn assemble(filename: String, source: String) -> Result<Self> {
         debug!("Assembling file {filename}");
-        // let sections = Vec::new();
-        let sections = Vec::new();
-        let section_map = HashMap::new();
-
         let mut assembler = Assembler {
             filename,
             symbols: SymbolTable::new(),
             global_symbols: Vec::new(),
             forward_references: Vec::new(),
-            current_section: None,
-            sections,
-            section_map,
+            sections: SectionMap::new(),
             current_line: 0,
         };
 
@@ -812,7 +775,7 @@ impl Assembler {
                 }
             } else {
                 expecting_comma = true;
-                let current_section = self.get_section_index()?;
+                let (current_section, _) = self.sections.get_section()?;
 
                 // The operand is a memory index, otherwise it's an expression/register
                 if let Token::LSqrBrace = tokens.peek().context("Expected token")?.token {
@@ -961,13 +924,10 @@ impl Assembler {
             bail!("Expected colon after identifier but got {token}");
         };
 
-        let current_section = self.get_section_index()?;
-        let position = self.sections[current_section].cursor();
+        let (current_section, section) = self.sections.get_section()?;
+        let position = section.cursor();
 
-        debug!(
-            "Label at {}+{position:#x}",
-            self.sections[current_section].name
-        );
+        debug!("Label at {}+{position:#x}", section.name);
         self.symbols
             .insert_symbol(name, position as u64, Type::Label, Some(current_section))?;
 
@@ -1011,13 +971,11 @@ mod tests {
 
     fn default_assembler() -> Assembler {
         Assembler {
-            section_map: HashMap::new(),
             filename: "test.asm".to_string(),
             symbols: SymbolTable::new(),
             global_symbols: Vec::new(),
             forward_references: Vec::new(),
-            current_section: None,
-            sections: Vec::new(),
+            sections: SectionMap::new(),
             current_line: 0,
         }
     }
