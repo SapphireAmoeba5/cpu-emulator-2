@@ -1,8 +1,10 @@
 use std::iter::Peekable;
 
 use crate::{
-    assembler::{AsmTokenIter, Assembler},
+    assembler::{AsmTokenIter, Assembler, ForwardReferenceEntry},
     expression::parse_expr,
+    module::RelocationEntry,
+    opcode::Relocation,
     section::Section,
     tokens::{Directive, Token, TokenIter},
 };
@@ -132,9 +134,20 @@ impl Assembler {
         let expr = parse_expr(tokens)?;
         let (value, relocation) = self.evaluate_non_operand_expression(&expr)?;
 
+        let (section_id, section) = self.sections.get_section()?;
+        if relocation {
+            let cursor = section.cursor();
+            let entry = ForwardReferenceEntry::new(
+                Relocation::Abs8,
+                section_id,
+                cursor,
+                expr,
+                self.current_line,
+            );
+            self.forward_references.push(entry);
+        }
         // TODO: Relocation
 
-        let(_, section) = self.sections.get_section()?;
         section.write_u8(value as u8);
 
         Ok(())
@@ -147,9 +160,19 @@ impl Assembler {
         let expr = parse_expr(tokens)?;
         let (value, relocation) = self.evaluate_non_operand_expression(&expr)?;
 
-        // TODO: Relocation
+        let (section_id, section) = self.sections.get_section()?;
+        if relocation {
+            let cursor = section.cursor();
+            let entry = ForwardReferenceEntry::new(
+                Relocation::Abs16,
+                section_id,
+                cursor,
+                expr,
+                self.current_line,
+            );
+            self.forward_references.push(entry);
+        }
 
-        let(_, section) = self.sections.get_section()?;
         section.write_u16(value as u16);
 
         Ok(())
@@ -162,9 +185,19 @@ impl Assembler {
         let expr = parse_expr(tokens)?;
         let (value, relocation) = self.evaluate_non_operand_expression(&expr)?;
 
-        // TODO: Relocation
+        let (section_id, section) = self.sections.get_section()?;
+        if relocation {
+            let cursor = section.cursor();
+            let entry = ForwardReferenceEntry::new(
+                Relocation::Abs32,
+                section_id,
+                cursor,
+                expr,
+                self.current_line,
+            );
+            self.forward_references.push(entry);
+        }
 
-        let(_, section) = self.sections.get_section()?;
         section.write_u32(value as u32);
 
         Ok(())
@@ -178,8 +211,19 @@ impl Assembler {
         let (value, relocation) = self.evaluate_non_operand_expression(&expr)?;
 
         // TODO: Relocation
+        let (section_id, section) = self.sections.get_section()?;
+        if relocation {
+            let cursor = section.cursor();
+            let entry = ForwardReferenceEntry::new(
+                Relocation::Abs64,
+                section_id,
+                cursor,
+                expr,
+                self.current_line,
+            );
+            self.forward_references.push(entry);
+        }
 
-        let(_, section) = self.sections.get_section()?;
         section.write_u64(value);
 
         Ok(())

@@ -30,7 +30,7 @@ impl BinaryOp {
     pub fn calculate(&self, lhs: u64, rhs: u64) -> u64 {
         self.overflowing_calculate(lhs, rhs).0
     }
-    
+
     /// Returns a tuple containing the result of the calculation, and a booleon of whether the
     /// operation would result in signed overflow
     pub fn overflowing_calculate(&self, lhs: u64, rhs: u64) -> (u64, bool) {

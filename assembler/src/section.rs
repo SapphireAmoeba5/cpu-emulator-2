@@ -157,6 +157,8 @@ impl<'a> SectionIter<'a> {
 impl<'a> Iterator for SectionIter<'a> {
     type Item = &'a Section;
 
+    /// TODO: Should this iterator return a tuple of (usize, &Section) where usize is the section
+    /// id, or is it better to make `enumerate` the way to get the same tuple
     fn next(&mut self) -> Option<Self::Item> {
         match self.sections.get(self.cur) {
             Some(section) => {

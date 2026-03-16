@@ -1,7 +1,7 @@
 mod assembler;
-mod lexer;
 mod expression;
 mod instruction;
+mod lexer;
 mod linker;
 mod module;
 mod opcode;

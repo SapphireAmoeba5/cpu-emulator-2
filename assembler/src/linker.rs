@@ -1,6 +1,9 @@
 use anyhow::{Context, Error, Result, anyhow};
 use spdlog::debug;
-use std::{collections::{HashMap, hash_map::Entry}, rc::Rc};
+use std::{
+    collections::{HashMap, hash_map::Entry},
+    rc::Rc,
+};
 
 use crate::{
     assembler::{
@@ -228,27 +231,53 @@ pub fn link(modules: Vec<Module>, script: Vec<Instr>) -> Result<Program, ()> {
                             &module.filename,
                             section_name,
                             relocation_offset,
-                            format!("ABS64 relocation on a relocatable symbol"),
+                            format!("ABS32 relocation on a relocatable symbol"),
                         );
                         continue;
                     }
 
-                    if let Ok(value) = u32::try_from(value) {
-                        debug!(
-                            "Fixup at {} {section_name}:{relocation_offset} to {value}",
-                            module.filename
-                        );
-                        replace_bytes(&mut linked, relocation_offset, &value.to_le_bytes());
-                    } else {
+                    let value = value as u32;
+                    debug!(
+                        "Fixup at {} {section_name}:{relocation_offset} to {value}",
+                        module.filename
+                    );
+                    replace_bytes(&mut linked, relocation_offset, &value.to_le_bytes());
+                }
+                Relocation::Abs16 => {
+                    if symbol_section.is_some() {
                         linker_error(
                             &mut failed,
                             &module.filename,
                             section_name,
                             relocation_offset,
-                            format!("Relocated value ({}) out of bounds for ABS32", value),
+                            format!("BS16 relocation on a relocatable symbol"),
                         );
-                        continue;
                     }
+
+                    let value = value as u16;
+                    debug!(
+                        "Fixup at {} {section_name}:{relocation_offset} to {value}",
+                        module.filename
+                    );
+                    replace_bytes(&mut linked, relocation_offset, &value.to_le_bytes());
+                }
+                Relocation::Abs8 => {
+                    if symbol_section.is_some() {
+                        linker_error(
+                            &mut failed,
+                            &module.filename,
+                            section_name,
+                            relocation_offset,
+                            format!("ABS8 relocation on a relocatable symbol"),
+                        );
+                    }
+
+                    let value = value as u8;
+                    debug!(
+                        "Fixup at {} {section_name}:{relocation_offset} to {value}",
+                        module.filename
+                    );
+                    replace_bytes(&mut linked, relocation_offset, &value.to_le_bytes());
                 }
                 Relocation::Abs32S => {
                     if symbol_section.is_some() {
@@ -281,7 +310,7 @@ pub fn link(modules: Vec<Module>, script: Vec<Instr>) -> Result<Program, ()> {
                 }
 
                 // TODO: Implement the other fixup types
-                _ => todo!(),
+                _ => todo!("Other relocation types"),
             }
         }
     }
