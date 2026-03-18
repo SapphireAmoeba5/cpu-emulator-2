@@ -93,9 +93,9 @@ impl Register {
     }
 
     pub fn is_special(&self) -> bool {
-        return self.0 >= Self::NUM_GP_REGISTERS
+        self.0 >= Self::NUM_GP_REGISTERS
             && self.0 != Self::INVALID_INDEX
-            && self.0 != Self::IP_INDEX;
+            && self.0 != Self::IP_INDEX
     }
 
     // Constructs a new general purpose register (r0 -> r15)

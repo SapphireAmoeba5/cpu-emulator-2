@@ -1,28 +1,19 @@
 mod directive;
 pub(super) mod emit;
-mod parse;
 pub mod symbol_table;
-use bitflags::Flag;
 use itertools::izip;
 
-use std::collections::HashMap;
-use std::f32::consts::E;
 use std::iter::Peekable;
-use std::ops::{Deref, DerefMut};
-use std::panic::resume_unwind;
-use std::{mem, usize};
 
 use anyhow::{anyhow, bail};
 use spdlog::debug;
 
 use crate::assembler::symbol_table::{SymbolTable, Type};
-use crate::expression::{BinaryOp, Mode, Node, parse_expr};
+use crate::expression::{BinaryOp, Node, parse_expr};
 use crate::instruction::Mnemonic;
-use crate::opcode::{
-    EncodingFlags, InstEncoding, MAX_OPERANDS, OperandFlags, Relocation, get_encodings,
-};
+use crate::opcode::{InstEncoding, MAX_OPERANDS, OperandFlags, Relocation, get_encodings};
 use crate::operand;
-use crate::section::{self, Section, SectionMap};
+use crate::section::SectionMap;
 pub use emit::calculate_disp32_offset;
 
 use super::lexer::*;
@@ -86,6 +77,7 @@ pub struct MemoryIndex {
 
 impl MemoryIndex {
     /// Returns true if this memory index expression is just a register
+    #[allow(dead_code)]
     pub fn is_register(&self) -> bool {
         self.disp == 0
             && self.base.is_valid()
@@ -949,6 +941,10 @@ impl Assembler {
         let expr = parse_expr(tokens)?;
         let (value, relocation) = self.evaluate_non_operand_expression(&expr)?;
 
+        if relocation {
+            bail!("Constant cannot have a relocatable value");
+        }
+
         if !tokens.is_newline_or_eof() {
             bail!("Expected a newline or EOF");
         }
@@ -960,7 +956,6 @@ impl Assembler {
 
 #[cfg(test)]
 mod tests {
-    use std::hash::Hash;
 
     /// Easily turn an &str into an owned string without much typing
     fn s(source: &str) -> String {
@@ -969,6 +964,7 @@ mod tests {
 
     use super::*;
 
+    #[allow(dead_code)]
     fn default_assembler() -> Assembler {
         Assembler {
             filename: "test.asm".to_string(),

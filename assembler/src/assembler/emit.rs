@@ -1,16 +1,14 @@
 use crate::{
-    assembler::{Assembler, ForwardReferenceEntry, Instruction, Operand},
+    assembler::{Assembler, ForwardReferenceEntry, Instruction},
     bit, encoding,
     opcode::{EncodingFlags, OperandFlags, Relocation},
     operand,
-    section::Section,
     tokens::Register,
 };
 use anyhow::{Context, Result, anyhow};
 use spdlog::debug;
 use std::{
     mem::{self, size_of},
-    ops::Index,
 };
 
 struct ValidRegister(u8);
@@ -148,7 +146,7 @@ fn memory_index_byte(base_or_index: Register, scale: u8, disp_width: bool, ignor
     reg_byte << 4 | scale << 2 | (disp_width as u8) << 1 | (ignore as u8)
 }
 
-fn immediate_fits(src: u64, options: OperandFlags) -> bool {
+fn _immediate_fits(src: u64, options: OperandFlags) -> bool {
     if options.intersects(OperandFlags::IMM64) {
         // Useless but included just to have it
         src <= u64::MAX
@@ -165,7 +163,7 @@ fn immediate_fits(src: u64, options: OperandFlags) -> bool {
 /// # Return
 /// Returns the smallest unsigned integer type (u8, u16, u32, u64) the value can fit in
 /// respectively
-fn get_size(value: u64) -> Size {
+fn _get_size(value: u64) -> Size {
     if value <= u8::MAX.into() {
         Size::U8
     } else if value <= u16::MAX.into() {
@@ -179,7 +177,7 @@ fn get_size(value: u64) -> Size {
     }
 }
 
-fn get_size_from_relocation(reloc: Relocation) -> Size {
+fn _get_size_from_relocation(reloc: Relocation) -> Size {
     Size::from(reloc)
 }
 
@@ -577,7 +575,7 @@ impl Assembler {
 
         let position = section.cursor();
 
-        let size = section.cursor() - start;
+        let size = position - start;
         debug!("Instruction size: {size}");
 
         // Instructions can't be bigger than 16 bytes
@@ -589,8 +587,6 @@ impl Assembler {
 
 #[cfg(test)]
 mod tests {
-    use crate::assembler;
-
     use super::*;
 
     #[test]

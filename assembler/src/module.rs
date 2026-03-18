@@ -57,7 +57,8 @@ fn evaluate_expression(
             Some(value) => {
                 // The symbol is label, otherwise it's a constant value
                 if let Some(_) = value.section_index {
-                    // The label's address is unknown
+                    // We preserve the symbol even if it can be resolved so the linker knows this
+                    // symbol is a label as opposed to some constant
                     (symbol.clone(), 0)
                 } else {
                     // The symbol is a constant and is valid in any context
@@ -91,8 +92,10 @@ fn evaluate_expression(
                 && left_section == right_section
                 && left_section == section
             {
-                left_addend = left_addend.wrapping_add(left.value.wrapping_sub(right.value));
-                String::new()
+                return Err(anyhow!("Failed to create relocation"));
+                // TODO: This is broken
+                // left_addend = left_addend.wrapping_add(left.value.wrapping_sub(right.value));
+                // String::new()
             } else {
                 return Err(anyhow!("Failed to create relocation"));
             };

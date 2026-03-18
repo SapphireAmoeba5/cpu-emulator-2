@@ -6,12 +6,12 @@ use crate::{
     opcode::Relocation,
     tokens::{Directive, Token},
 };
-use anyhow::{Context, Result, anyhow, bail};
+use anyhow::{Result, bail};
 use strum::EnumDiscriminants;
 
 /// This type doesn't implement `Iterator` because it needs to know the kind of token you expect to
 /// be there which the normal Iterator trait doesn't allow you to do
-struct DirectiveOperandIter<'a, I: for<'b> AsmTokenIter<'b>> {
+struct _DirectiveOperandIter<'a, I: for<'b> AsmTokenIter<'b>> {
     tokens: &'a mut Peekable<I>,
 }
 
