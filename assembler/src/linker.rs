@@ -162,9 +162,9 @@ pub fn link(modules: Vec<Module>, script: Vec<Instr>) -> Result<Program, ()> {
                     // TODO: Handle the case where the section won't be included in the final
                     // program
                     let offset: u64 = section_offset[global.module][section].try_into().unwrap();
-                    global.symbol.value + offset + relocation.addend
+                    global.symbol.value.wrapping_add(offset).wrapping_add(relocation.addend)
                 } else {
-                    global.symbol.value + relocation.addend
+                    global.symbol.value.wrapping_add(relocation.addend)
                 };
                 (value, global.symbol.section_index)
             } else {
