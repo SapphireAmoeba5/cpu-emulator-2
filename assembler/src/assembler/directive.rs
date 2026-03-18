@@ -1,17 +1,96 @@
-use std::iter::Peekable;
+use std::iter::{self, Peekable};
 
 use crate::{
     assembler::{AsmTokenIter, Assembler, ForwardReferenceEntry},
-    expression::parse_expr,
-    module::RelocationEntry,
+    expression::{Node, parse_expr},
     opcode::Relocation,
-    section::Section,
-    tokens::{Directive, Token, TokenIter},
+    tokens::{Directive, Token},
 };
 use anyhow::{Context, Result, anyhow, bail};
-use spdlog::debug;
+use strum::EnumDiscriminants;
+
+/// This type doesn't implement `Iterator` because it needs to know the kind of token you expect to
+/// be there which the normal Iterator trait doesn't allow you to do
+struct DirectiveOperandIter<'a, I: for<'b> AsmTokenIter<'b>> {
+    tokens: &'a mut Peekable<I>,
+}
+
+#[derive(Debug, EnumDiscriminants)]
+#[strum_discriminants(name(DirectiveArgumentKind))]
+enum DirectiveArgument {
+    Expr {
+        value: u64,
+        relocation: bool,
+        expr: Box<Node>,
+    },
+    Identifier(String),
+}
 
 impl Assembler {
+    /// Iterates over `kinds` and parses arguments from `tokens` based off each
+    /// specified DirectionArgumentKind and returns the number of arguments
+    /// parsed (which is just the length of `arguments`)
+    ///
+    /// Fully consumes `tokens` up-to and including the next `Token::Newline` or None
+    ///
+    /// This function will return Ok if the `kinds` iterator has been fully
+    /// consumed or if `tokens` reaches either a Newline or None in which case this
+    /// function will return a value lower than number of elements `kinds` would yield
+    /// if it were fully consumed.
+    ///
+    /// # Errors
+    /// This function will return Err if the syntax for the arguments is malformed, if `kinds`
+    /// is fully consumed but there are still tokens left on the current line,
+    /// or if any of the functions called internally fail
+    fn parse_directive_arguments<'a>(
+        &self,
+        arguments: &mut Vec<DirectiveArgument>,
+        kinds: impl IntoIterator<Item = DirectiveArgumentKind>,
+        tokens: &mut Peekable<impl AsmTokenIter<'a>>,
+    ) -> Result<usize> {
+        match tokens.peek().map(|a| &a.token) {
+            None | Some(Token::Newline) => return Ok(0),
+            _ => {}
+        }
+
+        for expected_kind in kinds {
+            match expected_kind {
+                DirectiveArgumentKind::Expr => {
+                    let expr = parse_expr(tokens)?;
+                    let (value, relocation) = self.evaluate_non_operand_expression(&expr)?;
+                    arguments.push(DirectiveArgument::Expr {
+                        value,
+                        relocation,
+                        expr,
+                    });
+                }
+                DirectiveArgumentKind::Identifier => {
+                    let Some(Token::Identifier(id)) = tokens.next().map(|a| a.token.clone()) else {
+                        bail!("Expected identifier")
+                    };
+
+                    arguments.push(DirectiveArgument::Identifier(id));
+                }
+            }
+
+            // Now we expect either a comma, newline, or None
+            match tokens.peek().map(|a| &a.token) {
+                None | Some(Token::Newline) => break,
+                Some(Token::Comma) => _ = tokens.next(),
+                _ => bail!("Expected a comma, newline, or EOF"),
+            }
+        }
+
+        // A .section directive must take up an entire line,
+        // and we may exit the loop because the `kinds` iterator was fully consumed
+        // while the `token` iter still has tokens left on the line
+        match tokens.peek().map(|a| &a.token) {
+            None | Some(Token::Newline) => {}
+            _ => bail!("Too many arguments for directive"),
+        }
+
+        Ok(arguments.len())
+    }
     pub(super) fn parse_directive<'a>(
         &mut self,
         directive: Directive,
@@ -22,37 +101,112 @@ impl Assembler {
             Directive::Align => self.parse_section_align(tokens),
             Directive::Skip => self.parse_skip(tokens),
             Directive::Global => self.parse_global_directive(tokens),
-            Directive::U8 => self.parse_embed_u8(tokens),
-            Directive::U16 => self.parse_embed_u16(tokens),
-            Directive::U32 => self.parse_embed_u32(tokens),
-            Directive::U64 => self.parse_embed_u64(tokens),
-        }
-    }
 
-    pub(super) fn parse_section_directive<'a>(
-        &mut self,
-        tokens: &mut Peekable<impl AsmTokenIter<'a>>,
-    ) -> Result<()> {
-        let section_name = &tokens
-            .next()
-            .context("Expected section name but found EOF")?
-            .token;
-
-        match section_name {
-            Token::Identifier(identifier) => {
-                self.sections.set_section(identifier.as_str());
+            // Parsing the embed directives I.E .u8 {EXPR}, .u16 {EXPR}, etc
+            Directive::U8 => {
+                let value = self.parse_embed(Relocation::Abs8, tokens)?;
+                let (_, section) = self.sections.get_section()?;
+                section.write_u8(value as u8);
                 Ok(())
             }
-            other => bail!("Expected identifier after .section but got {}", other),
+            Directive::U16 => {
+                let value = self.parse_embed(Relocation::Abs16, tokens)?;
+                let (_, section) = self.sections.get_section()?;
+                section.write_u16(value as u16);
+                Ok(())
+            }
+            Directive::U32 => {
+                let value = self.parse_embed(Relocation::Abs32, tokens)?;
+                let (_, section) = self.sections.get_section()?;
+                section.write_u32(value as u32);
+                Ok(())
+            }
+            Directive::U64 => {
+                let value = self.parse_embed(Relocation::Abs64, tokens)?;
+                let (_, section) = self.sections.get_section()?;
+                section.write_u64(value);
+                Ok(())
+            }
         }
     }
 
-    pub(super) fn parse_section_align<'a>(
+    fn parse_embed<'a>(
+        &mut self,
+        relocation_kind: Relocation,
+        tokens: &mut Peekable<impl AsmTokenIter<'a>>,
+    ) -> Result<u64> {
+        let mut arguments = Vec::new();
+        let _ = self.parse_directive_arguments(
+            &mut arguments,
+            iter::once(DirectiveArgumentKind::Expr),
+            tokens,
+        )?;
+
+        let Some(DirectiveArgument::Expr {
+            value,
+            relocation,
+            expr,
+        }) = arguments.pop()
+        else {
+            bail!("Expected argument for .embed");
+        };
+
+        if relocation {
+            let (section_id, section) = self.sections.get_section()?;
+            let cursor = section.cursor();
+
+            let entry = ForwardReferenceEntry::new(
+                relocation_kind,
+                section_id,
+                cursor,
+                expr,
+                self.current_line,
+            );
+            self.forward_references.push(entry);
+        }
+
+        Ok(value)
+    }
+
+    fn parse_section_directive<'a>(
         &mut self,
         tokens: &mut Peekable<impl AsmTokenIter<'a>>,
     ) -> Result<()> {
-        let expr = parse_expr(tokens)?;
-        let (align, relocation) = self.evaluate_non_operand_expression(&expr)?;
+        let mut arguments = Vec::new();
+        let _ = self.parse_directive_arguments(
+            &mut arguments,
+            iter::once(DirectiveArgumentKind::Identifier),
+            tokens,
+        )?;
+
+        let Some(DirectiveArgument::Identifier(id)) = arguments.pop() else {
+            bail!("Expected section name")
+        };
+
+        self.sections.set_section(id.as_str());
+
+        Ok(())
+    }
+
+    fn parse_section_align<'a>(
+        &mut self,
+        tokens: &mut Peekable<impl AsmTokenIter<'a>>,
+    ) -> Result<()> {
+        let mut arguments = Vec::new();
+        let _ = self.parse_directive_arguments(
+            &mut arguments,
+            iter::once(DirectiveArgumentKind::Expr),
+            tokens,
+        )?;
+
+        let Some(DirectiveArgument::Expr {
+            value: align,
+            relocation,
+            ..
+        }) = arguments.pop()
+        else {
+            bail!("Expected argument for .align");
+        };
 
         if relocation {
             bail!("Cannot align using a relocatable symbol");
@@ -72,26 +226,43 @@ impl Assembler {
         Ok(())
     }
 
-    pub(super) fn parse_skip<'a>(
-        &mut self,
-        tokens: &mut Peekable<impl AsmTokenIter<'a>>,
-    ) -> Result<()> {
-        let expr = parse_expr(tokens)?;
-        let (skip_count, relocation) = self.evaluate_non_operand_expression(&expr)?;
+    fn parse_skip<'a>(&mut self, tokens: &mut Peekable<impl AsmTokenIter<'a>>) -> Result<()> {
+        let mut arguments = Vec::new();
+        let num = self.parse_directive_arguments(
+            &mut arguments,
+            iter::repeat_n(DirectiveArgumentKind::Expr, 2),
+            tokens,
+        )?;
 
-        if relocation {
-            bail!("The amount to fill cannot reference a relocatable symbol");
+        // Must have 1 or 2 arguments
+        if num < 1 || num > 2 {
+            bail!("Expected argument for .skip");
         }
 
-        let fill_value: u8 = if let Some(Token::Comma) = tokens.peek().map(|a| &a.token) {
-            let _ = tokens.next();
-            let fill_value_expr = parse_expr(tokens)?;
-            let (fill_value, relocation) =
-                self.evaluate_non_operand_expression(&fill_value_expr)?;
+        let DirectiveArgument::Expr {
+            value: skip_count,
+            relocation,
+            ..
+        } = arguments.swap_remove(0)
+        else {
+            panic!(
+                "The enum variant stored in `arguments` should match the DirectiveOperandKind we asked for. This is a bug"
+            )
+        };
+
+        if relocation {
+            bail!("The skip count cannot be relocated");
+        }
+
+        let fill_value: u8 = if let Some(DirectiveArgument::Expr {
+            value, relocation, ..
+        }) = arguments.pop()
+        {
             if relocation {
-                bail!("The fill value cannot reference a relocatable symbol");
+                bail!("The fill value cannot be relocated");
             }
-            fill_value as u8
+
+            value as u8
         } else {
             0
         };
@@ -105,126 +276,22 @@ impl Assembler {
         Ok(())
     }
 
-    pub(super) fn parse_global_directive<'a>(
+    fn parse_global_directive<'a>(
         &mut self,
         tokens: &mut Peekable<impl AsmTokenIter<'a>>,
     ) -> Result<()> {
-        let symbol = &tokens
-            .next()
-            .context("Expected symbol but found EOF")?
-            .token;
+        let mut arguments = Vec::new();
+        let _ = self.parse_directive_arguments(
+            &mut arguments,
+            iter::once(DirectiveArgumentKind::Identifier),
+            tokens,
+        )?;
 
-        match symbol {
-            Token::Identifier(identifier) => self.global_symbols.push(identifier.clone()),
-            _ => {
-                return Err(anyhow!(
-                    "Espected identifier after .global but got {}",
-                    symbol.to_string()
-                ));
-            }
-        }
+        let Some(DirectiveArgument::Identifier(id)) = arguments.pop() else {
+            bail!("Expected argument for .global");
+        };
 
-        Ok(())
-    }
-
-    pub(super) fn parse_embed_u8<'a>(
-        &mut self,
-        tokens: &mut Peekable<impl AsmTokenIter<'a>>,
-    ) -> Result<()> {
-        let expr = parse_expr(tokens)?;
-        let (value, relocation) = self.evaluate_non_operand_expression(&expr)?;
-
-        let (section_id, section) = self.sections.get_section()?;
-        if relocation {
-            let cursor = section.cursor();
-            let entry = ForwardReferenceEntry::new(
-                Relocation::Abs8,
-                section_id,
-                cursor,
-                expr,
-                self.current_line,
-            );
-            self.forward_references.push(entry);
-        }
-        // TODO: Relocation
-
-        section.write_u8(value as u8);
-
-        Ok(())
-    }
-
-    pub(super) fn parse_embed_u16<'a>(
-        &mut self,
-        tokens: &mut Peekable<impl AsmTokenIter<'a>>,
-    ) -> Result<()> {
-        let expr = parse_expr(tokens)?;
-        let (value, relocation) = self.evaluate_non_operand_expression(&expr)?;
-
-        let (section_id, section) = self.sections.get_section()?;
-        if relocation {
-            let cursor = section.cursor();
-            let entry = ForwardReferenceEntry::new(
-                Relocation::Abs16,
-                section_id,
-                cursor,
-                expr,
-                self.current_line,
-            );
-            self.forward_references.push(entry);
-        }
-
-        section.write_u16(value as u16);
-
-        Ok(())
-    }
-
-    pub(super) fn parse_embed_u32<'a>(
-        &mut self,
-        tokens: &mut Peekable<impl AsmTokenIter<'a>>,
-    ) -> Result<()> {
-        let expr = parse_expr(tokens)?;
-        let (value, relocation) = self.evaluate_non_operand_expression(&expr)?;
-
-        let (section_id, section) = self.sections.get_section()?;
-        if relocation {
-            let cursor = section.cursor();
-            let entry = ForwardReferenceEntry::new(
-                Relocation::Abs32,
-                section_id,
-                cursor,
-                expr,
-                self.current_line,
-            );
-            self.forward_references.push(entry);
-        }
-
-        section.write_u32(value as u32);
-
-        Ok(())
-    }
-
-    pub(super) fn parse_embed_u64<'a>(
-        &mut self,
-        tokens: &mut Peekable<impl AsmTokenIter<'a>>,
-    ) -> Result<()> {
-        let expr = parse_expr(tokens)?;
-        let (value, relocation) = self.evaluate_non_operand_expression(&expr)?;
-
-        // TODO: Relocation
-        let (section_id, section) = self.sections.get_section()?;
-        if relocation {
-            let cursor = section.cursor();
-            let entry = ForwardReferenceEntry::new(
-                Relocation::Abs64,
-                section_id,
-                cursor,
-                expr,
-                self.current_line,
-            );
-            self.forward_references.push(entry);
-        }
-
-        section.write_u64(value);
+        self.global_symbols.push(id);
 
         Ok(())
     }

@@ -352,7 +352,7 @@ fn add_section(
         modules[module].sections[section].name, modules[module].filename
     );
 
-    let alignment: usize = alignment.try_into().unwrap();
+    let alignment: usize = alignment.try_into().expect("u64 doesn't fit in usize");
     let padding = (alignment - (linked.len() % alignment)) % alignment;
 
     linked.resize(linked.len() + padding, 0);

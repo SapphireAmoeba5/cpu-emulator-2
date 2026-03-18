@@ -241,5 +241,5 @@ fn main() -> ExitCode {
 
     println!("Wrote {} bytes", program.linked.len());
 
-    return ExitCode::SUCCESS;
+    ExitCode::SUCCESS
 }

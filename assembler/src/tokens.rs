@@ -5,7 +5,7 @@ use std::{
     fmt::Display,
     num::{IntErrorKind, ParseIntError},
 };
-use strum::{AsRefStr, IntoStaticStr};
+use strum::{AsRefStr, EnumDiscriminants, IntoStaticStr};
 
 use super::lexer::Lexer;
 
@@ -174,7 +174,8 @@ pub enum Keyword {
     Const,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone, EnumDiscriminants)]
+#[strum_discriminants(name(TokenKind))]
 pub enum Token {
     Mnemonic(Mnemonic),
     Register(Register),
@@ -562,9 +563,7 @@ impl<'a, T: Iterator<Item = &'a str>> TokenIter<'a, T> {
         }
 
         // Prevent things like r01 from being valid registers
-        if reg_id < 10 && token.len() != 2 {
-            return None;
-        } else if reg_id >= 10 && token.len() != 3 {
+        if reg_id < 10 && token.len() != 2 || reg_id >= 10 && token.len() != 3 {
             return None;
         }
 
