@@ -97,7 +97,7 @@ fn evaluate_expression(
                 return Err(anyhow!("Failed to create relocation"));
             };
 
-            if !symbol.is_empty() && *op != BinaryOp::Add {
+            if !symbol.is_empty() && *op != BinaryOp::Add && *op != BinaryOp::Sub {
                 return Err(anyhow!("Invalid operation on relocatable symbol"));
             }
 
@@ -157,7 +157,7 @@ impl TryFrom<Assembler> for Module {
                 Ok(result) => result,
                 Err(e) => {
                     return Err(anyhow!(
-                        "{}:{} {e}",
+                        "{}:{}\n\t{e}",
                         value.filename,
                         forward_reference.line_number
                     ));
