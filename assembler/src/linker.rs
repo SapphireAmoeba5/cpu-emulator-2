@@ -162,7 +162,11 @@ pub fn link(modules: Vec<Module>, script: Vec<Instr>) -> Result<Program, ()> {
                     // TODO: Handle the case where the section won't be included in the final
                     // program
                     let offset: u64 = section_offset[global.module][section].try_into().unwrap();
-                    global.symbol.value.wrapping_add(offset).wrapping_add(relocation.addend)
+                    global
+                        .symbol
+                        .value
+                        .wrapping_add(offset)
+                        .wrapping_add(relocation.addend)
                 } else {
                     global.symbol.value.wrapping_add(relocation.addend)
                 };
@@ -184,7 +188,8 @@ pub fn link(modules: Vec<Module>, script: Vec<Instr>) -> Result<Program, ()> {
                         "PC32 relocation at {} {section_name}:+{:#x}",
                         module.filename, relocation_offset
                     );
-                    let pc = (relocation_offset + 4).try_into().unwrap();
+                    // Overflow here should realistically be impossible
+                    let pc = relocation_offset as u64 + 4;
 
                     let offset = match calculate_disp32_offset(pc, value) {
                         Ok(offset) => offset,
@@ -362,6 +367,6 @@ fn add_section(
     section_included[module][section] = true;
     section_offset[module][section] = offset;
 
-    let section = modules[module].sections[section].data.as_slice();
+    let section = modules[module].sections[section].data.get_ref().as_slice();
     linked.extend_from_slice(section);
 }

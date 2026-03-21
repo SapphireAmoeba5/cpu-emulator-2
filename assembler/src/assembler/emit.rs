@@ -2,14 +2,12 @@ use crate::{
     assembler::{Assembler, ForwardReferenceEntry, Instruction},
     bit, encoding,
     opcode::{EncodingFlags, OperandFlags, Relocation},
-    operand,
+    operand, section,
     tokens::Register,
 };
 use anyhow::{Context, Result, anyhow};
 use spdlog::debug;
-use std::{
-    mem::{self, size_of},
-};
+use std::mem::{self, size_of};
 
 struct ValidRegister(u8);
 
@@ -566,9 +564,16 @@ impl Assembler {
             section.write_u32(offset as u32);
         } else if options.intersects(encoding!(OPCODE_REG)) {
             let reg = instruction.operands[0].register();
+            let reg = ValidRegister::try_from(reg).context("Invalid register")?;
 
             // Instructions with the OPCODE_REG option has its register encoded as the last 4 bits
-            *section.data.last_mut().unwrap() |= reg.get_gp().unwrap();
+            let cursor = section.cursor();
+            *section
+                .data
+                .get_mut()
+                .get_mut(cursor - 1)
+                .expect("Index should be within bound") |= reg.get_encoding();
+            // *section.data.last_mut().unwrap() |= reg.get_gp().unwrap();
         } else if !options.is_empty() && instruction.operand_count == 0 {
             panic!("Invalid instruction")
         }
@@ -597,6 +602,25 @@ mod tests {
         assert_eq!(assembler.sections.len(), 1);
 
         let (_, entry) = assembler.sections.get(".entry").unwrap();
-        assert_eq!(entry.data, &[0x30, 0x00, 0x0a]);
+        assert_eq!(entry.data.get_ref(), &[0x30, 0x00, 0x0a]);
+    }
+
+    #[test]
+    fn test_opcode_reg() {
+        let source = ".section .entry\n\njmp r3".to_string();
+        let assembler =
+            Assembler::assemble("test".to_string(), source).expect("This should assemble properly");
+        assert_eq!(assembler.sections.len(), 1);
+
+        let (_, entry) = assembler.sections.get(".entry").unwrap();
+        assert_eq!(entry.data.get_ref(), &[0xc3]);
+
+        let source = ".section .entry\n\npush r15\n.u16 0xabcd".to_string();
+        let assembler =
+            Assembler::assemble("test".to_string(), source).expect("This should assemble properly");
+        assert_eq!(assembler.sections.len(), 1);
+
+        let (_, entry) = assembler.sections.get(".entry").unwrap();
+        assert_eq!(entry.data.get_ref(), &[0xdf, 0xcd, 0xab]);
     }
 }

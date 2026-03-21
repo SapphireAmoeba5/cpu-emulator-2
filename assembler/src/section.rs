@@ -1,13 +1,17 @@
 use std::{
     collections::{HashMap, hash_map::Entry},
+    io::{Cursor, Write},
     num::NonZero,
     ops,
     rc::Rc,
 };
 
-use anyhow::{Result, anyhow, bail};
+use anyhow::{Context, Result, anyhow, bail};
 
-use crate::instruction::{Instruction, Operand};
+use crate::{
+    instruction::{Instruction, Operand},
+    section,
+};
 
 #[derive(Debug)]
 pub struct Section {
@@ -15,7 +19,7 @@ pub struct Section {
     pub name: Rc<str>,
     /// The alignment this section requires
     pub alignment: u64,
-    pub data: Vec<u8>,
+    pub data: Cursor<Vec<u8>>,
     // pub section_data: Vec<SectionEntry>,
 }
 
@@ -24,44 +28,58 @@ impl Section {
         Self {
             name,
             alignment: 1,
-            data: Vec::new(),
+            data: Cursor::new(Vec::new()),
         }
     }
 
     pub fn replace_bytes(&mut self, offset: usize, bytes: &[u8]) {
-        let count = bytes.len();
-        let copy = &mut self.data[offset..offset + count];
-        copy.copy_from_slice(bytes);
+        let old_position = self.data.position();
+        self.data
+            .set_position(offset.try_into().expect("Offset is too large"));
+        // Garunteed to return Ok
+        _ = self.data.write(bytes);
+        self.data.set_position(old_position);
+    }
+
+    pub fn align(&mut self, align: u64) {
+        if align > self.alignment {
+            self.alignment = align;
+        }
+
+        let cursor: u64 = self.cursor().try_into().expect("Value too large");
+
+        let n = (align - (cursor % align)) % align;
+        self.data.set_position(cursor + n);
     }
 
     pub fn write_u8(&mut self, byte: u8) {
-        self.data.push(byte);
+        _ = self.data.write(&byte.to_le_bytes());
     }
 
     pub fn write_u16(&mut self, byte: u16) {
-        self.write_bytes(&byte.to_le_bytes());
+        _ = self.data.write(&byte.to_le_bytes());
     }
 
     pub fn write_u32(&mut self, byte: u32) {
-        self.write_bytes(&byte.to_le_bytes());
+        _ = self.data.write(&byte.to_le_bytes());
     }
 
     pub fn write_u64(&mut self, byte: u64) {
-        self.write_bytes(&byte.to_le_bytes());
+        _ = self.data.write(&byte.to_le_bytes());
     }
 
     pub fn write_bytes(&mut self, bytes: &[u8]) {
-        self.data.extend_from_slice(bytes);
+        _ = self.data.write(bytes);
     }
 
     /// Get's the current size of the section in bytes
     pub fn size(&self) -> usize {
-        self.data.len()
+        self.data.get_ref().len()
     }
 
     /// Gets the current byte position of the
     pub fn cursor(&self) -> usize {
-        self.size()
+        self.data.position().try_into().expect("Value too large")
     }
 }
 
@@ -195,5 +213,31 @@ impl<'a> Iterator for SectionIter<'a> {
     fn size_hint(&self) -> (usize, Option<usize>) {
         let remaining = self.sections.len() - self.cur;
         (remaining, Some(remaining))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_align() {
+        let mut section = Section::new(Rc::from("Test section"));
+
+        section.write_u8(1);
+        section.align(8);
+
+        section.write_u64(0xabababababababab);
+
+        assert_eq!(section.data.get_ref(), &[1, 0, 0, 0, 0, 0, 0, 0, 0xab, 0xab, 0xab, 0xab, 0xab, 0xab, 0xab, 0xab]);
+
+        let mut section = Section::new(Rc::from("Test section"));
+
+        section.write_u8(1);
+        section.align(16);
+
+        section.write_u64(0xabababababababab);
+
+        assert_eq!(section.data.get_ref(), &[1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0xab, 0xab, 0xab, 0xab, 0xab, 0xab, 0xab, 0xab]);
     }
 }

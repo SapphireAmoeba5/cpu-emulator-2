@@ -301,14 +301,7 @@ impl Assembler {
 
         let (_, section) = self.sections.get_section_mut()?;
 
-        if align > section.alignment {
-            section.alignment = align;
-        }
-
-        let align: usize = align.try_into().unwrap();
-        let n: usize = (align - (section.size() % align)) % align;
-
-        section.data.resize(section.data.len() + n, 0);
+        section.align(align);
 
         Ok(())
     }
