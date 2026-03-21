@@ -1,19 +1,18 @@
-use std::iter::{self, Peekable};
+use std::{
+    iter::{self, Peekable},
+    rc::Rc,
+};
 
 use crate::{
-    assembler::{AsmTokenIter, Assembler, ForwardReferenceEntry},
+    assembler::{AsmTokenIter, Assembler, AssemblerToken, ForwardReferenceEntry},
     expression::{Node, parse_expr},
     opcode::Relocation,
-    tokens::{Directive, Token},
+    section,
+    size::Size,
+    tokens::{self, Directive, Token},
 };
-use anyhow::{Result, bail};
+use anyhow::{Context, Result, anyhow, bail};
 use strum::EnumDiscriminants;
-
-/// This type doesn't implement `Iterator` because it needs to know the kind of token you expect to
-/// be there which the normal Iterator trait doesn't allow you to do
-struct _DirectiveOperandIter<'a, I: for<'b> AsmTokenIter<'b>> {
-    tokens: &'a mut Peekable<I>,
-}
 
 #[derive(Debug, EnumDiscriminants)]
 #[strum_discriminants(name(DirectiveArgumentKind))]
@@ -26,71 +25,100 @@ enum DirectiveArgument {
     Identifier(String),
 }
 
-impl Assembler {
-    /// Iterates over `kinds` and parses arguments from `tokens` based off each
-    /// specified DirectionArgumentKind and returns the number of arguments
-    /// parsed (which is just the length of `arguments`)
-    ///
-    /// Fully consumes `tokens` up-to and including the next `Token::Newline` or None
-    ///
-    /// This function will return Ok if the `kinds` iterator has been fully
-    /// consumed or if `tokens` reaches either a Newline or None in which case this
-    /// function will return a value lower than number of elements `kinds` would yield
-    /// if it were fully consumed.
-    ///
-    /// # Errors
-    /// This function will return Err if the syntax for the arguments is malformed, if `kinds`
-    /// is fully consumed but there are still tokens left on the current line,
-    /// or if any of the functions called internally fail
-    fn parse_directive_arguments<'a>(
-        &self,
-        arguments: &mut Vec<DirectiveArgument>,
-        kinds: impl IntoIterator<Item = DirectiveArgumentKind>,
-        tokens: &mut Peekable<impl AsmTokenIter<'a>>,
-    ) -> Result<usize> {
-        match tokens.peek().map(|a| &a.token) {
-            None | Some(Token::Newline) => return Ok(0),
-            _ => {}
-        }
-
-        for expected_kind in kinds {
-            match expected_kind {
-                DirectiveArgumentKind::Expr => {
-                    let expr = parse_expr(tokens)?;
-                    let (value, relocation) = self.evaluate_non_operand_expression(&expr)?;
-                    arguments.push(DirectiveArgument::Expr {
-                        value,
-                        relocation,
-                        expr,
-                    });
-                }
-                DirectiveArgumentKind::Identifier => {
-                    let Some(Token::Identifier(id)) = tokens.next().map(|a| a.token.clone()) else {
-                        bail!("Expected identifier")
-                    };
-
-                    arguments.push(DirectiveArgument::Identifier(id));
-                }
-            }
-
-            // Now we expect either a comma, newline, or None
-            match tokens.peek().map(|a| &a.token) {
-                None | Some(Token::Newline) => break,
-                Some(Token::Comma) => _ = tokens.next(),
-                _ => bail!("Expected a comma, newline, or EOF"),
-            }
-        }
-
-        // A .section directive must take up an entire line,
-        // and we may exit the loop because the `kinds` iterator was fully consumed
-        // while the `token` iter still has tokens left on the line
-        match tokens.peek().map(|a| &a.token) {
-            None | Some(Token::Newline) => {}
-            _ => bail!("Too many arguments for directive"),
-        }
-
-        Ok(arguments.len())
+fn should_return_none<'a>(tokens: &mut Peekable<impl AsmTokenIter<'a>>) -> bool {
+    match tokens.peek() {
+        None
+        | Some(AssemblerToken {
+            token: Token::Newline,
+            ..
+        }) => true,
+        _ => false,
     }
+}
+
+fn valid_comma<'a>(tokens: &mut Peekable<impl AsmTokenIter<'a>>) -> bool {
+    match tokens.peek() {
+        None
+        | Some(AssemblerToken {
+            token: Token::Newline,
+            ..
+        }) => true,
+        Some(AssemblerToken {
+            token: Token::Comma,
+            ..
+        }) => {
+            _ = tokens.next();
+            true
+        }
+        _ => false,
+    }
+}
+
+impl Assembler {
+    fn parse_expr_argument<'a>(
+        &self,
+        tokens: &mut Peekable<impl AsmTokenIter<'a>>,
+    ) -> Result<Option<(u64, bool, Box<Node>)>> {
+        if should_return_none(tokens) {
+            return Ok(None);
+        }
+
+        let expr = parse_expr(tokens)?;
+        let (value, relocation) = self.evaluate_non_operand_expression(&expr)?;
+
+        if !valid_comma(tokens) {
+            bail!("Expected comma");
+        }
+
+        Ok(Some((value, relocation, expr)))
+    }
+
+    fn parse_identifier_argument<'a>(
+        &self,
+        tokens: &mut Peekable<impl AsmTokenIter<'a>>,
+    ) -> Result<Option<String>> {
+        if should_return_none(tokens) {
+            return Ok(None);
+        }
+
+        let Some(AssemblerToken {
+            token: Token::Identifier(id),
+            ..
+        }) = tokens.next()
+        else {
+            bail!("Expected identifier");
+        };
+
+        if !valid_comma(tokens) {
+            bail!("Expected comma");
+        }
+
+        Ok(Some(id.clone()))
+    }
+
+    fn parse_string_argument<'a>(
+        &self,
+        tokens: &mut Peekable<impl AsmTokenIter<'a>>,
+    ) -> Result<Option<Rc<str>>> {
+        if should_return_none(tokens) {
+            return Ok(None);
+        }
+
+        let Some(AssemblerToken {
+            token: Token::Ascii(string),
+            ..
+        }) = tokens.next()
+        else {
+            bail!("Expected string");
+        };
+
+        if !valid_comma(tokens) {
+            bail!("Expected comma");
+        }
+
+        Ok(Some(string.clone()))
+    }
+
     pub(super) fn parse_directive<'a>(
         &mut self,
         directive: Directive,
@@ -101,89 +129,138 @@ impl Assembler {
             Directive::Align => self.parse_section_align(tokens),
             Directive::Skip => self.parse_skip(tokens),
             Directive::Global => self.parse_global_directive(tokens),
+            Directive::U8 => self.parse_embed(Size::U8, tokens),
+            Directive::U16 => self.parse_embed(Size::U16, tokens),
+            Directive::U32 => self.parse_embed(Size::U32, tokens),
+            Directive::U64 => self.parse_embed(Size::U64, tokens),
+            Directive::Ascii => self.parse_ascii(tokens),
+        }?;
 
-            // Parsing the embed directives I.E .u8 {EXPR}, .u16 {EXPR}, etc
-            Directive::U8 => {
-                let value = self.parse_embed(Relocation::Abs8, tokens)?;
-                let (_, section) = self.sections.get_section()?;
-                section.write_u8(value as u8);
-                Ok(())
+        // A directive must consist of the entire line, if not then it is an error
+        match tokens.next() {
+            None
+            | Some(AssemblerToken {
+                token: Token::Newline,
+                ..
+            }) => {}
+            _ => bail!("Unexpected token"),
+        }
+
+        Ok(())
+    }
+
+    fn parse_ascii<'a>(&mut self, tokens: &mut Peekable<impl AsmTokenIter<'a>>) -> Result<()> {
+        fn escape_char(chars: &mut impl Iterator<Item = char>) -> Result<u8> {
+            match chars.next() {
+                None => bail!("'\\' must be followed by an escape character"),
+                Some(c) => match c {
+                    'n' => Ok(b'\n'),
+                    '\'' => Ok(b'\''),
+                    '\"' => Ok(b'\"'),
+                    'a' => Ok(0x07),
+                    'b' => Ok(0x08),
+                    'f' => Ok(0x0c),
+                    '\r' => Ok(b'\r'),
+                    '\t' => Ok(b'\t'),
+                    'v' => Ok(0x0b),
+                    '\\' => Ok(b'\\'),
+                    '0' => Ok(0),
+                    'x' => {
+                        let mut total = 0;
+                        for i in (0..2).rev() {
+                            if let Some(c) = chars.next()
+                                && let Some(digit) = c.to_digit(16)
+                            {
+                                total += (digit as u8) << (4 * i);
+                            } else {
+                                break;
+                            }
+                        }
+
+                        Ok(total)
+                    }
+                    _ => bail!("Invalid escape character '{c}'"),
+                },
             }
-            Directive::U16 => {
-                let value = self.parse_embed(Relocation::Abs16, tokens)?;
-                let (_, section) = self.sections.get_section()?;
-                section.write_u16(value as u16);
-                Ok(())
+        }
+        let mut count = 0usize;
+
+        while let Some(string) = self.parse_string_argument(tokens)? {
+            count += 1;
+
+            let (_, section) = self.sections.get_section()?;
+            let mut chars = string.chars();
+            while let Some(c) = chars.next() {
+                let mut buf = [0; 4];
+                if c == '\\' {
+                    let escaped = escape_char(&mut chars)?;
+                    section.write_u8(escaped);
+                } else {
+                    let slice = c.encode_utf8(&mut buf);
+                    section.write_bytes(slice.as_bytes());
+                }
             }
-            Directive::U32 => {
-                let value = self.parse_embed(Relocation::Abs32, tokens)?;
-                let (_, section) = self.sections.get_section()?;
-                section.write_u32(value as u32);
-                Ok(())
-            }
-            Directive::U64 => {
-                let value = self.parse_embed(Relocation::Abs64, tokens)?;
-                let (_, section) = self.sections.get_section()?;
-                section.write_u64(value);
-                Ok(())
-            }
+        }
+
+        if count > 0 {
+            Ok(())
+        } else {
+            bail!("Expected one or more arguments");
         }
     }
 
     fn parse_embed<'a>(
         &mut self,
-        relocation_kind: Relocation,
+        size: Size,
         tokens: &mut Peekable<impl AsmTokenIter<'a>>,
-    ) -> Result<u64> {
-        let mut arguments = Vec::new();
-        let _ = self.parse_directive_arguments(
-            &mut arguments,
-            iter::once(DirectiveArgumentKind::Expr),
-            tokens,
-        )?;
-
-        let Some(DirectiveArgument::Expr {
-            value,
-            relocation,
-            expr,
-        }) = arguments.pop()
-        else {
-            bail!("Expected argument for .embed");
+    ) -> Result<()> {
+        let relocation_kind = match size {
+            Size::U8 => Relocation::Abs8,
+            Size::U16 => Relocation::Abs16,
+            Size::U32 => Relocation::Abs32,
+            Size::U64 => Relocation::Abs64,
         };
 
-        if relocation {
+        let mut count = 0usize;
+        while let Some((value, relocation, expr)) = self.parse_expr_argument(tokens)? {
+            count += 1;
             let (section_id, section) = self.sections.get_section()?;
-            let cursor = section.cursor();
+            if relocation {
+                let cursor = section.cursor();
 
-            let entry = ForwardReferenceEntry::new(
-                relocation_kind,
-                section_id,
-                cursor,
-                expr,
-                self.current_line,
-            );
-            self.forward_references.push(entry);
+                let entry = ForwardReferenceEntry::new(
+                    relocation_kind,
+                    section_id,
+                    cursor,
+                    expr,
+                    self.current_line,
+                );
+                self.forward_references.push(entry);
+            }
+
+            match size {
+                Size::U8 => section.write_u8(value as u8),
+                Size::U16 => section.write_u16(value as u16),
+                Size::U32 => section.write_u32(value as u32),
+                Size::U64 => section.write_u64(value as u64),
+            }
         }
-
-        Ok(value)
+        if count > 0 {
+            Ok(())
+        } else {
+            bail!("Expected one or more arguments")
+        }
     }
 
     fn parse_section_directive<'a>(
         &mut self,
         tokens: &mut Peekable<impl AsmTokenIter<'a>>,
     ) -> Result<()> {
-        let mut arguments = Vec::new();
-        let _ = self.parse_directive_arguments(
-            &mut arguments,
-            iter::once(DirectiveArgumentKind::Identifier),
-            tokens,
-        )?;
+        let section_name = self
+            .parse_identifier_argument(tokens)?
+            .with_context(|| "Expected identifier")?;
 
-        let Some(DirectiveArgument::Identifier(id)) = arguments.pop() else {
-            bail!("Expected section name")
-        };
-
-        self.sections.set_section(id.as_str());
+        self.sections.set_section(section_name.as_str());
 
         Ok(())
     }
@@ -192,21 +269,9 @@ impl Assembler {
         &mut self,
         tokens: &mut Peekable<impl AsmTokenIter<'a>>,
     ) -> Result<()> {
-        let mut arguments = Vec::new();
-        let _ = self.parse_directive_arguments(
-            &mut arguments,
-            iter::once(DirectiveArgumentKind::Expr),
-            tokens,
-        )?;
-
-        let Some(DirectiveArgument::Expr {
-            value: align,
-            relocation,
-            ..
-        }) = arguments.pop()
-        else {
-            bail!("Expected argument for .align");
-        };
+        let (align, relocation, _) = self
+            .parse_expr_argument(tokens)?
+            .context("Expected expression")?;
 
         if relocation {
             bail!("Cannot align using a relocatable symbol");
@@ -227,45 +292,23 @@ impl Assembler {
     }
 
     fn parse_skip<'a>(&mut self, tokens: &mut Peekable<impl AsmTokenIter<'a>>) -> Result<()> {
-        let mut arguments = Vec::new();
-        let num = self.parse_directive_arguments(
-            &mut arguments,
-            iter::repeat_n(DirectiveArgumentKind::Expr, 2),
-            tokens,
-        )?;
-
-        // Must have 1 or 2 arguments
-        if num < 1 || num > 2 {
-            bail!("Expected argument for .skip");
-        }
-
-        let DirectiveArgument::Expr {
-            value: skip_count,
-            relocation,
-            ..
-        } = arguments.swap_remove(0)
-        else {
-            panic!(
-                "The enum variant stored in `arguments` should match the DirectiveOperandKind we asked for. This is a bug"
-            )
-        };
+        let (skip_count, relocation, _) = self
+            .parse_expr_argument(tokens)?
+            .context("Expected expression")?;
 
         if relocation {
             bail!("The skip count cannot be relocated");
         }
 
-        let fill_value: u8 = if let Some(DirectiveArgument::Expr {
-            value, relocation, ..
-        }) = arguments.pop()
-        {
-            if relocation {
-                bail!("The fill value cannot be relocated");
-            }
-
-            value as u8
-        } else {
-            0
-        };
+        let fill_value =
+            if let Some((skip_count, relocation, _)) = self.parse_expr_argument(tokens)? {
+                if relocation {
+                    bail!("Cannot relocate the fill value");
+                }
+                skip_count as u8
+            } else {
+                0
+            };
 
         let (_, section) = self.sections.get_section()?;
 
@@ -280,16 +323,9 @@ impl Assembler {
         &mut self,
         tokens: &mut Peekable<impl AsmTokenIter<'a>>,
     ) -> Result<()> {
-        let mut arguments = Vec::new();
-        let _ = self.parse_directive_arguments(
-            &mut arguments,
-            iter::once(DirectiveArgumentKind::Identifier),
-            tokens,
-        )?;
-
-        let Some(DirectiveArgument::Identifier(id)) = arguments.pop() else {
-            bail!("Expected argument for .global");
-        };
+        let id = self
+            .parse_identifier_argument(tokens)?
+            .context("Expected identifier")?;
 
         self.global_symbols.push(id);
 

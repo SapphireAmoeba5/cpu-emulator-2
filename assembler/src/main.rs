@@ -1,4 +1,5 @@
 mod assembler;
+mod size;
 mod expression;
 mod instruction;
 mod lexer;

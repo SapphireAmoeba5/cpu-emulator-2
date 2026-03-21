@@ -47,8 +47,7 @@ impl<'a> Iterator for Lexer<'a> {
         let mut final_index = self.current;
 
         let mut iter = self.source[start_index..]
-            .chars()
-            .enumerate()
+            .char_indices()
             .map(|(i, ch)| (start_index + i, ch))
             .peekable();
 

@@ -1,9 +1,11 @@
-use crate::{instruction::Mnemonic, opcode::OperandFlags};
+use crate::{instruction::Mnemonic, opcode::OperandFlags, tokens};
 use anyhow::{Context, Result, anyhow, bail};
+use clap::error::ContextKind;
 use core::fmt;
 use std::{
     fmt::Display,
     num::{IntErrorKind, ParseIntError},
+    rc::Rc,
 };
 use strum::{AsRefStr, EnumDiscriminants, IntoStaticStr};
 
@@ -167,6 +169,7 @@ pub enum Directive {
     U16,
     U32,
     U64,
+    Ascii,
 }
 
 #[derive(Debug, Clone, Copy, AsRefStr, PartialEq, Eq)]
@@ -178,6 +181,7 @@ pub enum Keyword {
 #[strum_discriminants(name(TokenKind))]
 pub enum Token {
     Mnemonic(Mnemonic),
+    Ascii(Rc<str>),
     Register(Register),
     Identifier(String),
     Directive(Directive),
@@ -206,6 +210,7 @@ impl fmt::Display for Token {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let value = match self {
             Self::Mnemonic(instr) => instr.as_ref(),
+            Self::Ascii(_) => "string",
             Self::Register(register) => register.as_ref(),
             Self::Identifier(id) => id,
             Self::Directive(dir) => dir.as_ref(),
@@ -276,6 +281,8 @@ impl<'a, T: Iterator<Item = &'a str>> TokenIter<'a, T> {
     fn parse_token(token: &str) -> Option<Result<Token>> {
         let token = if let Some(instruction) = Self::instruction(token) {
             Token::Mnemonic(instruction)
+        } else if let Some(string) = Self::string(token) {
+            return Some(string.map(Token::Ascii));
         } else if let Some(register) = Self::register(token) {
             Token::Register(register)
         } else if let Some(keyword) = Self::keyword(token) {
@@ -326,6 +333,7 @@ impl<'a, T: Iterator<Item = &'a str>> TokenIter<'a, T> {
             ".u16" => Some(Directive::U16),
             ".u32" => Some(Directive::U32),
             ".u64" => Some(Directive::U64),
+            ".ascii" => Some(Directive::Ascii),
             _ => None,
         }
     }
@@ -536,6 +544,26 @@ impl<'a, T: Iterator<Item = &'a str>> TokenIter<'a, T> {
             "int" => Some(Mnemonic::Int),
             _ => None,
         }
+    }
+
+    fn string(mut token: &str) -> Option<Result<Rc<str>>> {
+        if token.starts_with('"') {
+            if token.ends_with('"') {
+                token = token.trim_matches('"');
+            } else {
+                return Some(Err(anyhow!("Unterminated double quote string")));
+            }
+        } else if token.starts_with('\'') {
+            if token.ends_with('\'') {
+                token = token.trim_matches('\'');
+            } else {
+                return Some(Err(anyhow!("Unterminated single quote string")));
+            }
+        } else {
+            return None;
+        }
+
+        Some(Ok(Rc::from(token)))
     }
 
     fn register(token: &str) -> Option<Register> {

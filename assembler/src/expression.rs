@@ -5,7 +5,7 @@ use crate::{
     TokenIter,
     tokens::{Register, Token},
 };
-use anyhow::{Context, Result, anyhow};
+use anyhow::{Context, Result, anyhow, bail};
 
 #[derive(Debug, Clone, Copy, Eq, PartialEq)]
 pub enum BinaryOp {
@@ -158,6 +158,7 @@ fn parse_constant<'a>(tokens: &mut Peekable<impl AsmTokenIter<'a>>) -> Result<Bo
                 _ => return Err(anyhow!("Expected closing brace")),
             }
         }
+        Token::Ascii(_) => bail!("Cannot use strings in an expression"),
         unary_op => match UnaryOp::try_from(unary_op) {
             Ok(op) => Node::UnaryOp {
                 op,
