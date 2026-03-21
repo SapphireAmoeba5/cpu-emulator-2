@@ -666,7 +666,6 @@ impl Assembler {
     ) -> Result<()> {
         match &token.token {
             Token::Mnemonic(instruction) => self.parse_instruction(&instruction, tokens),
-            Token::Keyword(keyword) => self.parse_keyword(keyword, tokens),
             Token::Directive(directive) => self.parse_directive(*directive, tokens),
             Token::Identifier(id) => self.parse_label(id.clone(), tokens),
             Token::Newline => Ok(()),
@@ -930,16 +929,6 @@ impl Assembler {
         }
     }
 
-    fn parse_keyword<'a>(
-        &mut self,
-        keyword: &Keyword,
-        tokens: &mut Peekable<impl AsmTokenIter<'a>>,
-    ) -> Result<()> {
-        match keyword {
-            Keyword::Const => self.parse_const(tokens),
-        }
-    }
-
     fn parse_label<'a>(
         &mut self,
         name: String,
@@ -1015,14 +1004,14 @@ mod tests {
     fn test_assembler() {
         let source = s("
         .section .entry
-        const value = 10
+        .equ value, 10
         mov r0, value
         ");
 
         let _ = Assembler::assemble(s("test"), source).unwrap();
 
         let source = s("
-        const value = 10
+        .equ value, 10
         mov r0, value
         ");
 

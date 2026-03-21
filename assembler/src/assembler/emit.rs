@@ -591,7 +591,7 @@ mod tests {
 
     #[test]
     fn test_emit() {
-        let source = ".section .entry\nconst value = 10\nmov r0, value".to_string();
+        let source = ".section .entry\n.equ value, 10\nmov r0, value".to_string();
         let assembler =
             Assembler::assemble("test".to_string(), source).expect("This should assemble properly");
         assert_eq!(assembler.sections.len(), 1);

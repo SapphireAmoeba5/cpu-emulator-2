@@ -162,6 +162,7 @@ impl Display for Register {
 #[derive(Debug, Clone, Copy, IntoStaticStr, AsRefStr)]
 pub enum Directive {
     Section,
+    Equ,
     Align,
     Skip,
     Global,
@@ -172,11 +173,6 @@ pub enum Directive {
     Ascii,
 }
 
-#[derive(Debug, Clone, Copy, AsRefStr, PartialEq, Eq)]
-pub enum Keyword {
-    Const,
-}
-
 #[derive(Debug, Clone, EnumDiscriminants)]
 #[strum_discriminants(name(TokenKind))]
 pub enum Token {
@@ -185,7 +181,6 @@ pub enum Token {
     Register(Register),
     Identifier(String),
     Directive(Directive),
-    Keyword(Keyword),
     Number(u64),
     Equal,
     Comma,
@@ -214,7 +209,6 @@ impl fmt::Display for Token {
             Self::Register(register) => register.as_ref(),
             Self::Identifier(id) => id,
             Self::Directive(dir) => dir.as_ref(),
-            Self::Keyword(keyword) => keyword.as_ref(),
             Self::Number(num) => &num.to_string(),
             Self::Equal => "=",
             Self::Comma => ",",
@@ -285,8 +279,6 @@ impl<'a, T: Iterator<Item = &'a str>> TokenIter<'a, T> {
             return Some(string.map(Token::Ascii));
         } else if let Some(register) = Self::register(token) {
             Token::Register(register)
-        } else if let Some(keyword) = Self::keyword(token) {
-            Token::Keyword(keyword)
         } else if let Some(token) = Self::directive(token) {
             Token::Directive(token)
         } else if let Some(token) = Self::special_character(token) {
@@ -326,6 +318,7 @@ impl<'a, T: Iterator<Item = &'a str>> TokenIter<'a, T> {
     fn directive(token: &str) -> Option<Directive> {
         match token {
             ".section" => Some(Directive::Section),
+            ".equ" => Some(Directive::Equ),
             ".align" => Some(Directive::Align),
             ".skip" => Some(Directive::Skip),
             ".global" => Some(Directive::Global),
@@ -334,13 +327,6 @@ impl<'a, T: Iterator<Item = &'a str>> TokenIter<'a, T> {
             ".u32" => Some(Directive::U32),
             ".u64" => Some(Directive::U64),
             ".ascii" => Some(Directive::Ascii),
-            _ => None,
-        }
-    }
-
-    fn keyword(token: &str) -> Option<Keyword> {
-        match token {
-            "const" => Some(Keyword::Const),
             _ => None,
         }
     }

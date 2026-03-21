@@ -4,7 +4,9 @@ use std::{
 };
 
 use crate::{
-    assembler::{AsmTokenIter, Assembler, AssemblerToken, ForwardReferenceEntry},
+    assembler::{
+        AsmTokenIter, Assembler, AssemblerToken, ForwardReferenceEntry, symbol_table::Type,
+    },
     expression::{Node, parse_expr},
     opcode::Relocation,
     section,
@@ -126,6 +128,7 @@ impl Assembler {
     ) -> Result<()> {
         match directive {
             Directive::Section => self.parse_section_directive(tokens),
+            Directive::Equ => self.parse_equ(tokens),
             Directive::Align => self.parse_section_align(tokens),
             Directive::Skip => self.parse_skip(tokens),
             Directive::Global => self.parse_global_directive(tokens),
@@ -250,6 +253,25 @@ impl Assembler {
         } else {
             bail!("Expected one or more arguments")
         }
+    }
+
+    fn parse_equ<'a>(&mut self, tokens: &mut Peekable<impl AsmTokenIter<'a>>) -> Result<()> {
+        let name = self
+            .parse_identifier_argument(tokens)?
+            .context("Expected identifier")?;
+
+        let (value, relocation, _) = self
+            .parse_expr_argument(tokens)?
+            .context("Expected expression")?;
+
+        if relocation {
+            bail!("Constant cannot have a relocatable value");
+        }
+
+        self.symbols
+            .insert_symbol(name, value, Type::Constant, None)?;
+
+        Ok(())
     }
 
     fn parse_section_directive<'a>(
