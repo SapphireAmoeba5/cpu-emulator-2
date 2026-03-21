@@ -1,5 +1,4 @@
 mod assembler;
-mod size;
 mod expression;
 mod instruction;
 mod lexer;
@@ -7,6 +6,7 @@ mod linker;
 mod module;
 mod opcode;
 mod section;
+mod size;
 mod tokens;
 
 use std::{

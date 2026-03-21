@@ -370,3 +370,31 @@ fn add_section(
     let section = modules[module].sections[section].data.get_ref().as_slice();
     linked.extend_from_slice(section);
 }
+
+#[cfg(test)]
+mod tests {
+    use crate::{
+        assembler::Assembler,
+        linker::{Instr, link},
+        module::Module,
+    };
+
+    #[test]
+    fn test_relocations() {
+        let source = ".section .entry\nmov r3, CONST_VALUE\n.section .data\n.equ CONST_VALUE, 0xab"
+            .to_string();
+        let assembler = Assembler::assemble(String::from("testfile.asm"), source)
+            .expect("This should assemble");
+
+        let modules = vec![Module::try_from(assembler).expect("This conversion should not fail")];
+
+        let script = vec![
+            Instr::Section(".entry".to_string()),
+            Instr::Section(".data".to_string()),
+            Instr::Section("*".to_string()),
+        ];
+
+        let linked = link(modules, script).expect("Linking should not fail");
+        assert_eq!(linked.linked, &[0x30, 0x3c, 0xab, 0, 0, 0, 0, 0, 0, 0]);
+    }
+}

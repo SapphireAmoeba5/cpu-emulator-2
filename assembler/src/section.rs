@@ -229,7 +229,12 @@ mod tests {
 
         section.write_u64(0xabababababababab);
 
-        assert_eq!(section.data.get_ref(), &[1, 0, 0, 0, 0, 0, 0, 0, 0xab, 0xab, 0xab, 0xab, 0xab, 0xab, 0xab, 0xab]);
+        assert_eq!(
+            section.data.get_ref(),
+            &[
+                1, 0, 0, 0, 0, 0, 0, 0, 0xab, 0xab, 0xab, 0xab, 0xab, 0xab, 0xab, 0xab
+            ]
+        );
 
         let mut section = Section::new(Rc::from("Test section"));
 
@@ -238,6 +243,12 @@ mod tests {
 
         section.write_u64(0xabababababababab);
 
-        assert_eq!(section.data.get_ref(), &[1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0xab, 0xab, 0xab, 0xab, 0xab, 0xab, 0xab, 0xab]);
+        assert_eq!(
+            section.data.get_ref(),
+            &[
+                1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0xab, 0xab, 0xab, 0xab, 0xab, 0xab,
+                0xab, 0xab
+            ]
+        );
     }
 }
