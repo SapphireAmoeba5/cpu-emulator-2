@@ -89,6 +89,8 @@ impl std::ops::Index<&str> for SectionMap {
 }
 
 impl SectionMap {
+    const ERROR_MESSAGE: &str =
+        "Section to place data not defined. Try doing .section {section_name} before your code";
     pub fn new() -> Self {
         Self {
             sections: Vec::new(),
@@ -115,12 +117,21 @@ impl SectionMap {
     ///
     /// # Errors
     /// Returns Err if there is no current section (I.E `set_section` wasn't called yet)
-    pub fn get_section(&mut self) -> Result<(usize, &mut Section)> {
+    pub fn get_section_mut(&mut self) -> Result<(usize, &mut Section)> {
         match self.current_section {
             Some(current) => Ok((current, &mut self.sections[current])),
-            None => bail!(
-                "Section to place data not defined. Try doing .section {{section_name}} before your code"
-            ),
+            None => bail!("{}", Self::ERROR_MESSAGE),
+        }
+    }
+
+    /// Returns a tuple containing the section id and an immutable reference to the section last set with `set_section`
+    ///
+    /// # Errors
+    /// Returns Err if there is no current section (I.E `set_section` wasn't called yet)
+    pub fn get_section(&self) -> Result<(usize, &Section)> {
+        match self.current_section {
+            Some(current) => Ok((current, &self.sections[current])),
+            None => bail!("{}", Self::ERROR_MESSAGE),
         }
     }
 
@@ -128,6 +139,18 @@ impl SectionMap {
         let section_id = *self.section_map.get(section.as_ref())?;
         let section = self.sections.get(section_id)?;
         Some((section_id, section))
+    }
+
+    /// Returns a tuple containing the ID of the current section, and the current cursor position
+    /// in that section
+    ///
+    /// # Errors
+    /// Returns Err if there was no section defined using `set_section`
+    pub fn cursor(&self) -> Result<(usize, usize)> {
+        match self.current_section {
+            Some(current) => Ok((current, self.sections[current].cursor())),
+            None => bail!("{}", Self::ERROR_MESSAGE),
+        }
     }
 
     /// Gets the number of sections

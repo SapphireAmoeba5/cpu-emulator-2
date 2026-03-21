@@ -188,7 +188,7 @@ impl Assembler {
         while let Some(string) = self.parse_string_argument(tokens)? {
             count += 1;
 
-            let (_, section) = self.sections.get_section()?;
+            let (_, section) = self.sections.get_section_mut()?;
             let mut chars = string.chars();
             while let Some(c) = chars.next() {
                 let mut buf = [0; 4];
@@ -224,7 +224,7 @@ impl Assembler {
         let mut count = 0usize;
         while let Some((value, relocation, expr)) = self.parse_expr_argument(tokens)? {
             count += 1;
-            let (section_id, section) = self.sections.get_section()?;
+            let (section_id, section) = self.sections.get_section_mut()?;
             if relocation {
                 let cursor = section.cursor();
 
@@ -277,7 +277,7 @@ impl Assembler {
             bail!("Cannot align using a relocatable symbol");
         }
 
-        let (_, section) = self.sections.get_section()?;
+        let (_, section) = self.sections.get_section_mut()?;
 
         if align > section.alignment {
             section.alignment = align;
@@ -310,7 +310,7 @@ impl Assembler {
                 0
             };
 
-        let (_, section) = self.sections.get_section()?;
+        let (_, section) = self.sections.get_section_mut()?;
 
         for _ in 0..skip_count {
             section.write_u8(fill_value);

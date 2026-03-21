@@ -218,7 +218,7 @@ impl Assembler {
     pub(super) fn emit_instruction(&mut self, mut instruction: Instruction) -> Result<usize> {
         let options = instruction.encoding.options;
 
-        let (section_id, section) = self.sections.get_section()?;
+        let (section_id, section) = self.sections.get_section_mut()?;
         let line_number = self.current_line;
 
         // Used for getting the current size of the instruction

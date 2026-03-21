@@ -12,8 +12,8 @@ use crate::assembler::symbol_table::{SymbolTable, Type};
 use crate::expression::{BinaryOp, Node, parse_expr};
 use crate::instruction::Mnemonic;
 use crate::opcode::{InstEncoding, MAX_OPERANDS, OperandFlags, Relocation, get_encodings};
-use crate::operand;
 use crate::section::SectionMap;
+use crate::{operand, section};
 pub use emit::calculate_disp32_offset;
 
 use super::lexer::*;
@@ -42,8 +42,8 @@ pub trait AsmTokenIter<'a>: Iterator<Item = &'a AssemblerToken> {
 }
 impl<'a, T: Iterator<Item = &'a AssemblerToken>> AsmTokenIter<'a> for T {}
 
-fn get_operand_from_expr_result(is_label: bool, _relocatable: bool) -> OperandFlags {
-    let operand = if is_label {
+fn get_operand_from_expr_result(section: Option<usize>, _relocatable: bool) -> OperandFlags {
+    let operand = if section.is_some() {
         operand!(DISP)
     } else {
         operand!(IMM | ADDR64 | DISP)
@@ -213,7 +213,7 @@ impl ForwardReferenceEntry {
 pub enum ExprResult {
     Constant {
         constant: u64,
-        is_label: bool,
+        section: Option<usize>,
         relocation: bool,
     },
     Register(Register),
@@ -223,7 +223,7 @@ impl ExprResult {
     pub fn new_imm(immediate: u64) -> Self {
         Self::Constant {
             constant: immediate,
-            is_label: false,
+            section: None,
             relocation: false,
         }
     }
@@ -231,7 +231,7 @@ impl ExprResult {
     pub fn new_reloc() -> Self {
         Self::Constant {
             constant: 0,
-            is_label: false,
+            section: None,
             relocation: true,
         }
     }
@@ -261,6 +261,22 @@ impl Assembler {
             Node::Constant(value) => Ok(ExprResult::new_imm(*value)),
             Node::Register(register) => Ok(ExprResult::Register(*register)),
             Node::Identifier(id) => {
+                // The symol of `.` represents the current offset into the section
+                if id == "." {
+                    let (section, cursor) = if current_section != Self::NO_SECTION {
+                        let section = &self.sections[current_section];
+                        (current_section, section.cursor())
+                    } else {
+                        self.sections.cursor()?
+                    };
+
+                    return Ok(ExprResult::Constant {
+                        constant: cursor as u64,
+                        section: Some(section),
+                        relocation: false,
+                    });
+                }
+
                 // If the symbol isn't defined
                 let Some(symbol) = self.symbols.get_symbol(id) else {
                     return Ok(ExprResult::new_reloc());
@@ -271,7 +287,7 @@ impl Assembler {
                     if section == current_section {
                         Ok(ExprResult::Constant {
                             constant: symbol.value,
-                            is_label: true,
+                            section: Some(section),
                             relocation: false,
                         })
                     }
@@ -279,7 +295,7 @@ impl Assembler {
                     else {
                         Ok(ExprResult::Constant {
                             constant: 0,
-                            is_label: true,
+                            section: Some(section),
                             relocation: true,
                         })
                     }
@@ -294,7 +310,7 @@ impl Assembler {
 
                 let ExprResult::Constant {
                     constant: lhs_constant,
-                    is_label: lhs_is_label,
+                    section: lhs_section,
                     relocation: lhs_relocation,
                 } = left
                 else {
@@ -303,7 +319,7 @@ impl Assembler {
 
                 let ExprResult::Constant {
                     constant: rhs_constant,
-                    is_label: rhs_is_label,
+                    section: rhs_section,
                     relocation: rhs_relocation,
                 } = right
                 else {
@@ -316,9 +332,23 @@ impl Assembler {
 
                 let result = op.calculate(lhs_constant, rhs_constant);
 
+                let section = match (lhs_section, rhs_section) {
+                    (Some(lhs), Some(rhs)) if lhs != rhs => {
+                        bail!("Cannot an operations on labels from different sections")
+                    }
+                    // If you are subtracting two labels (from the same section) then the result
+                    // can be represented as an absolute value
+                    (Some(_), Some(_)) if *op == BinaryOp::Sub => None,
+                    // `lhs` and `rhs` are equal
+                    (Some(lhs), Some(_rhs)) => Some(lhs),
+                    (Some(lhs), None) => Some(lhs),
+                    (None, Some(rhs)) => Some(rhs),
+                    (None, None) => None,
+                };
+
                 Ok(ExprResult::Constant {
                     constant: result,
-                    is_label: lhs_is_label | rhs_is_label,
+                    section,
                     relocation: lhs_relocation | rhs_relocation,
                 })
             }
@@ -328,14 +358,14 @@ impl Assembler {
 
                 let ExprResult::Constant {
                     constant,
-                    is_label,
+                    section,
                     relocation,
                 } = result
                 else {
                     bail!("Invalid operation on a register");
                 };
 
-                if is_label {
+                if section.is_some() {
                     bail!("Cannot perform this operation on a label");
                 }
 
@@ -343,7 +373,8 @@ impl Assembler {
 
                 Ok(ExprResult::Constant {
                     constant,
-                    is_label,
+                    // `section` is garunteed to be None since it was checked earlier
+                    section: None,
                     relocation,
                 })
             }
@@ -353,16 +384,20 @@ impl Assembler {
     /// Returns a tuple of the result of the expression, and whether a relocation needs to be
     /// emitted
     fn evaluate_non_operand_expression(&self, expr: &Box<Node>) -> Result<(u64, bool)> {
-        let result = self.evaluate_expression(expr, Self::NO_SECTION)?;
+        let result = if let Ok((section, _)) = self.sections.get_section() {
+            self.evaluate_expression(expr, section)?
+        } else {
+            self.evaluate_expression(expr, Self::NO_SECTION)?
+        };
 
         match result {
             ExprResult::Register(_) => bail!("Invalid use of register"),
             ExprResult::Constant {
                 constant,
-                is_label,
+                section,
                 relocation,
             } => {
-                if is_label {
+                if section.is_some() {
                     bail!("Invalid use of label");
                 } else {
                     Ok((constant, relocation))
@@ -767,7 +802,7 @@ impl Assembler {
                 }
             } else {
                 expecting_comma = true;
-                let (current_section, _) = self.sections.get_section()?;
+                let (current_section, _) = self.sections.get_section_mut()?;
 
                 // The operand is a memory index, otherwise it's an expression/register
                 if let Token::LSqrBrace = tokens.peek().context("Expected token")?.token {
@@ -862,13 +897,13 @@ impl Assembler {
                             // (Operand::Constant(constant), {OPERAND_FLAGS})
                             ExprResult::Constant {
                                 constant,
-                                is_label,
+                                section,
                                 relocation,
                             } => (
                                 Operand::Constant(constant),
                                 match flag_override {
                                     FlagOverride::None => {
-                                        get_operand_from_expr_result(is_label, relocation)
+                                        get_operand_from_expr_result(section, relocation)
                                     }
                                     FlagOverride::Constant => operand!(IMM),
                                     FlagOverride::Memory => operand!(ADDR | DISP),
@@ -916,7 +951,7 @@ impl Assembler {
             bail!("Expected colon after identifier but got {token}");
         };
 
-        let (current_section, section) = self.sections.get_section()?;
+        let (current_section, section) = self.sections.get_section_mut()?;
         let position = section.cursor();
 
         debug!("Label at {}+{position:#x}", section.name);

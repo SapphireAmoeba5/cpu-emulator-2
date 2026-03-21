@@ -4,7 +4,7 @@ use std::{
     ffi::os_str::Display,
 };
 
-use anyhow::{Result, anyhow};
+use anyhow::{Result, anyhow, bail};
 
 #[derive(Debug, Copy, Clone, Eq, PartialEq)]
 pub enum Type {
@@ -52,6 +52,9 @@ impl SymbolTable {
         type_: Type,
         section: Option<usize>,
     ) -> Result<()> {
+        if id == "." {
+            bail!("Cannot use . as a symbol");
+        }
         match self.symbols.entry(id) {
             Entry::Vacant(vacant) => {
                 vacant.insert(Symbol {
@@ -61,7 +64,7 @@ impl SymbolTable {
                 });
                 Ok(())
             }
-            Entry::Occupied(_) => Err(anyhow!("Symbol already defined")),
+            Entry::Occupied(_) => bail!("Symbol already defined"),
         }
     }
 
