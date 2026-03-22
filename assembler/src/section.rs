@@ -97,11 +97,25 @@ impl std::ops::Index<usize> for SectionMap {
     }
 }
 
+impl std::ops::IndexMut<usize> for SectionMap {
+    fn index_mut(&mut self, index: usize) -> &mut Self::Output {
+        &mut self.sections[index]
+    }
+}
+
 impl std::ops::Index<&str> for SectionMap {
     type Output = Section;
     #[track_caller]
     fn index(&self, index: &str) -> &Self::Output {
         let (_, section) = self.get(index).expect("No such section");
+        section
+    }
+}
+
+impl std::ops::IndexMut<&str> for SectionMap {
+    #[track_caller]
+    fn index_mut(&mut self, index: &str) -> &mut Self::Output {
+        let (_, section) = self.get_mut(index).expect("No such section");
         section
     }
 }
@@ -156,6 +170,12 @@ impl SectionMap {
     pub fn get(&self, section: impl AsRef<str>) -> Option<(usize, &Section)> {
         let section_id = *self.section_map.get(section.as_ref())?;
         let section = self.sections.get(section_id)?;
+        Some((section_id, section))
+    }
+
+    pub fn get_mut(&mut self, section: impl AsRef<str>) -> Option<(usize, &mut Section)> {
+        let section_id = *self.section_map.get(section.as_ref())?;
+        let section = self.sections.get_mut(section_id)?;
         Some((section_id, section))
     }
 

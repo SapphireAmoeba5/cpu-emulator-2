@@ -68,7 +68,10 @@ impl SymbolTable {
         }
     }
 
+    #[track_caller]
     pub fn get_symbol(&self, id: &str) -> Option<Symbol> {
+        assert_ne!(id, ".", "The location counter should never be requested as a symbol");
+
         match self.symbols.get(id) {
             Some(value) => Some(*value),
             None => None,

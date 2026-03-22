@@ -13,7 +13,7 @@ use crate::expression::{BinaryOp, Node, parse_expr};
 use crate::instruction::Mnemonic;
 use crate::opcode::{InstEncoding, MAX_OPERANDS, OperandFlags, Relocation, get_encodings};
 use crate::section::SectionMap;
-use crate::{operand, section};
+use crate::{operand, section, tokens};
 pub use emit::calculate_disp32_offset;
 
 use super::lexer::*;
@@ -667,6 +667,7 @@ impl Assembler {
         match &token.token {
             Token::Mnemonic(instruction) => self.parse_instruction(&instruction, tokens),
             Token::Directive(directive) => self.parse_directive(*directive, tokens),
+            Token::Identifier(id) if id == "." => self.parse_location_counter_assign(tokens),
             Token::Identifier(id) => self.parse_label(id.clone(), tokens),
             Token::Newline => Ok(()),
             other => Err(anyhow!("Unknown token {other:?}")),
@@ -760,6 +761,49 @@ impl Assembler {
         };
 
         let _ = self.emit_instruction(instruction)?;
+        Ok(())
+    }
+
+    /// Parses the . = {expr} syntax
+    ///
+    /// Assigning to the location counter(the '.') will cause the assembler to emit the next bytes
+    /// starting from where you assign the location counter. Initially assigning the location
+    /// counter will not cause any bytes to be written, but once you emit bytes to the new location
+    /// then the assembler will pad enough zeros to get to the new location before emitting the
+    /// requested bytes
+    ///
+    /// # Errors
+    /// Errors if there were any syntax errors while parsing
+    fn parse_location_counter_assign<'a>(
+        &mut self,
+        tokens: &mut Peekable<impl AsmTokenIter<'a>>,
+    ) -> Result<()> {
+        let Some(AssemblerToken {
+            token: Token::Equal,
+            ..
+        }) = tokens.next()
+        else {
+            bail!("Expected =, +=, or -=");
+        };
+
+        let(section_id, _) = self.sections.get_section()?;
+        let expr = parse_expr(tokens)?;
+        let ExprResult::Constant { constant, section, relocation } = self.evaluate_expression(&expr, section_id)? else {
+            bail!("Cannot assign a register value to the location counter");
+        };
+
+        if relocation {
+            bail!("Cannot use relocatable values when assigning to the location counter");
+        }
+
+        if let Some(section) = section && section != section_id {
+            bail!("Cannot assign the location counter to a label from another section");
+        }
+
+        let current_section = &mut self.sections[section_id];
+
+        current_section.data.set_position(constant);
+
         Ok(())
     }
 
